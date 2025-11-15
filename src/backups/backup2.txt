@@ -1,0 +1,816 @@
+#include <Arduino.h>
+#include <MD_Parola.h>
+#ifdef ESP32
+#include <WiFi.h>
+#include <esp_task_wdt.h> // Include the ESP32 watchdog library
+#else
+#include <ESP8266WiFi.h>
+#endif
+#include <WiFiClientSecure.h>
+#include <UniversalTelegramBot.h>
+#include <ArduinoJson.h>
+#include <IotWebConf.h>
+#include <time.h>
+#include <ESP32Encoder.h>
+#include <RTClib.h>
+#include <Preferences.h>
+#include <Wire.h>
+#include "DFRobotDFPlayerMini.h"
+// Constants and Macros
+#define BOT_TOKEN "6824249584:AAFiZPhLaIB27YrVF_MX1HqvhKNwlUKh9oQ"
+#define CHAT_ID "818675367"
+#define HARDWARE_TYPE MD_MAX72XX::FC16_HW
+#define MAX_DEVICES 4
+#define CS_PIN 5
+#define ENCODER_PIN_A 9
+#define ENCODER_PIN_B 10
+#define PRESS_PIN 13
+#define LED_PIN 2
+#define BOT_REQUEST_DELAY 1000
+#define WIFI_INITIAL_AP_PASSWORD "m12345678"
+#define THING_NAME "testThing"
+
+// Watchdog Timer Timeout (in seconds)
+#define WATCHDOG_TIMEOUT 10
+
+// Global Variables
+// Use pins 2 and 3 to communicate with DFPlayer Mini
+DFRobotDFPlayerMini player;
+Preferences preferences;
+RTC_DS3231 rtc;
+ESP32Encoder encoder;
+MD_Parola myDisplay = MD_Parola(HARDWARE_TYPE, CS_PIN, MAX_DEVICES);
+WiFiClientSecure client;
+UniversalTelegramBot bot(BOT_TOKEN, client);
+unsigned long lastTimeBotRan;
+bool ledState = LOW;
+String scrollMessage = "no message";
+String timeNow, dateNow;
+int hours = 0, minutes = 0, day = 0, month = 0, year = 0, amPm = 1;
+unsigned long lastDisplayTime = 0;
+bool useFirstScroll = true;
+int AlarmHour = 0;
+int AlarmMins = 0;
+String alarmState = "";
+bool AlarmExit = false;
+int brightness;
+int AlarmVolume = 20;
+int AlarmMusic = 1;
+int newestPos = 0;
+String scrolling;
+
+// Task handles
+TaskHandle_t TaskEncoderHandle = NULL;
+TaskHandle_t TaskDisplayHandle = NULL;
+TaskHandle_t TaskBotHandle = NULL;
+TaskHandle_t TaskTimeHandle = NULL;
+TaskHandle_t TaskMemoryHandle = NULL;
+TaskHandle_t TaskSendBotHandle = NULL;
+
+// IoT Web Configuration
+DNSServer dnsServer;
+WebServer server(80);
+IotWebConf iotWebConf(THING_NAME, &dnsServer, &server, WIFI_INITIAL_AP_PASSWORD);
+
+// Function Prototypes
+void resetEveryTwoHours();
+void writeToFlash(const char *key, int valueToStore);
+int readFromFlash(const char *key);
+int nat(int number);
+bool longpress(int pin, int dtime, int state);
+String longToString(long number);
+void convertTo24Hour(int hour12, int minute, const String &period, int &hour24, int &minute24);
+void handleEncoder();
+String formatTime12Hour(int hour, int minute, bool &isPM);
+void handleRoot();
+void handleEncoderTask(void *parameter);
+void handleTimeTask(void *parameter);
+void handleDisplayTask(void *parameter);
+String handleNewMessages(int numNewMessages);
+void handleBotTask(void *parameter);
+void monitorFreeHeapMemory();
+void HandleAlarmTask();
+
+// Function Definitions
+void StoreData(const char *key, const int val)
+{
+  preferences.begin("store", false);
+  preferences.putInt(key, val);
+  preferences.end();
+}
+int ReadData(const char *val)
+{
+  preferences.begin("store", false);
+  int ret = preferences.getInt(val);
+  preferences.end();
+  return ret;
+}
+void StoreDataString(const char *key, const String val)
+{
+  preferences.begin("store", false);
+  preferences.putString(key, val);
+  preferences.end();
+}
+String ReadDataString(const char *val)
+{
+  preferences.begin("store", false);
+  String ret = preferences.getString(val);
+  preferences.end();
+  return ret;
+}
+void writeToFlash(const char *key, int valueToStore)
+{
+  preferences.putInt(key, valueToStore);
+  Serial.printf("Stored integer at %s: %d\n", key, valueToStore);
+}
+
+int readFromFlash(const char *key)
+{
+  int storedValue = preferences.getInt(key, 0);
+  Serial.printf("Read integer from %s: %d\n", key, storedValue);
+  return storedValue;
+}
+
+int nat(int number)
+{
+  return number == 0 ? 1 : 0;
+}
+
+bool longpress(int pin, int dtime, int state)
+{
+  if (digitalRead(pin) == nat(state))
+  {
+    return false;
+  }
+  int i = 0;
+  while (digitalRead(pin) == state && i <= 10)
+  {
+    delay(dtime / 10);
+    if (i == 10)
+    {
+      return true;
+    }
+    i++;
+  }
+  return false;
+}
+
+String longToString(long number)
+{
+  char buffer[20];
+  sprintf(buffer, "%ld", number);
+  return String(buffer);
+}
+
+void convertTo24Hour(int hour12, int minute, const String &period, int &hour24, int &minute24)
+{
+  hour24 = hour12;
+  minute24 = minute;
+  if (period == "PM" && hour12 != 12)
+  {
+    hour24 += 12;
+  }
+  if (period == "AM" && hour12 == 12)
+  {
+    hour24 = 0;
+  }
+}
+
+#include <Preferences.h>
+
+// Preferences preferences;
+
+void handleEncoder()
+{
+  enum State
+  {
+    MAIN_MENU,
+    SET_TIME,
+    SET_ALARM,
+    SET_BRIGHTNESS,
+    SET_ALARM_STATUS,
+    SET_ALARM_VOL,
+    SET_MUSIC,
+    EXIT
+  };
+
+  enum AlarmStatus
+  {
+    ALARM_OFF,
+    ALARM_ON
+  };
+
+  State currentState = MAIN_MENU;
+  int menuOption = 0;
+  int pressCounter = 0;
+  String isPMorAM = "";
+  int alarmHours = 0, alarmMinutes = 0;
+  // int brightness = 1; // Initialize brightness
+  AlarmStatus alarmStatus = ALARM_OFF;
+
+  // preferences.begin("my-app", false); // Open the preferences with a namespace
+
+  myDisplay.print("Menu");
+  delay(1000);
+  int i = 0;
+  for (;;)
+  {
+
+    static long oldPosition = -999;
+    long newPosition = encoder.getCount();
+    if (longpress(PRESS_PIN, 1000, 0))
+    {
+      encoder.clearCount();
+      pressCounter++;
+      oldPosition = -999;
+      newPosition = 1;
+
+      if (currentState == MAIN_MENU)
+      {
+        switch (menuOption)
+        {
+        case 0:
+          currentState = SET_TIME;
+          myDisplay.print("T.set");
+          delay(1000);
+          break;
+        case 1:
+          currentState = SET_ALARM;
+          myDisplay.print("A.set");
+          delay(1000);
+          break;
+        case 2:
+          currentState = SET_BRIGHTNESS;
+          myDisplay.print("B.set");
+          delay(1000);
+          break;
+        case 3:
+          currentState = SET_ALARM_STATUS;
+          myDisplay.print("A.st");
+          delay(1000);
+          break;
+        case 4:
+          currentState = SET_ALARM_VOL;
+          myDisplay.print("V.st");
+          delay(1000);
+          break;
+        case 5:
+          currentState = SET_MUSIC;
+          myDisplay.print("M.st");
+          delay(1000);
+          break;
+        case 6:
+          currentState = EXIT;
+          myDisplay.print("EXIT");
+          delay(1000);
+          // references.end(); // Close the preferences before exiting
+          return; // Exit the function
+        }
+      }
+    }
+
+    if (newPosition != oldPosition)
+    {
+      oldPosition = newPosition;
+
+      if (currentState == MAIN_MENU)
+      {
+        menuOption = constrain(newPosition, 0, 6);
+        switch (menuOption)
+        {
+        case 0:
+          myDisplay.print("Time");
+          break;
+        case 1:
+          myDisplay.print("Alarm");
+          break;
+        case 2:
+          myDisplay.print("Bright");
+          break;
+        case 3:
+          myDisplay.print("AlStat");
+          break;
+        case 4:
+          myDisplay.print("Volume");
+          break;
+        case 5:
+          myDisplay.print("Music");
+          break;
+        case 6:
+          myDisplay.print("Exit");
+          break;
+        }
+      }
+      else if (currentState == SET_TIME)
+      {
+        if (pressCounter == 1)
+        {
+          newPosition = constrain(newPosition, 1, 12);
+          hours = newPosition;
+          myDisplay.print("Hr>" + longToString(hours));
+        }
+        else if (pressCounter == 2)
+        {
+          newPosition = constrain(newPosition, 1, 100);
+          amPm = newPosition;
+          isPMorAM = (amPm % 2 == 0) ? "AM" : "PM";
+          myDisplay.print(">" + isPMorAM);
+        }
+        else if (pressCounter == 3)
+        {
+          newPosition = constrain(newPosition, 1, 59);
+          minutes = newPosition;
+          myDisplay.print("Min>" + longToString(minutes));
+        }
+        else if (pressCounter == 4)
+        {
+          newPosition = constrain(newPosition, 1, 31);
+          day = newPosition;
+          myDisplay.print("Day>" + longToString(day));
+        }
+        else if (pressCounter == 5)
+        {
+          newPosition = constrain(newPosition, 1, 12);
+          month = newPosition;
+          myDisplay.print("Mon>" + longToString(month));
+        }
+        else if (pressCounter == 6)
+        {
+          newPosition = constrain(newPosition, 1, 99);
+          year = newPosition;
+          myDisplay.print(">" + longToString(2000 + year));
+        }
+        else if (pressCounter == 7)
+        {
+          int hour24, minute24;
+          convertTo24Hour(hours, minutes, isPMorAM, hour24, minute24);
+          rtc.adjust(DateTime(2000 + year, month, day, hour24, minutes, 0));
+          myDisplay.print("EXIT");
+          delay(1000);
+          currentState = MAIN_MENU;
+          pressCounter = 0;
+        }
+      }
+      else if (currentState == SET_ALARM)
+      {
+        if (pressCounter == 1)
+        {
+          newPosition = constrain(newPosition, 1, 12);
+          alarmHours = newPosition;
+          myDisplay.print("Hr>" + longToString(alarmHours));
+        }
+        else if (pressCounter == 2)
+        {
+          newPosition = constrain(newPosition, 1, 100);
+          amPm = newPosition;
+          isPMorAM = (amPm % 2 == 0) ? "AM" : "PM";
+          myDisplay.print(">" + isPMorAM);
+        }
+        else if (pressCounter == 3)
+        {
+          newPosition = constrain(newPosition, 0, 59);
+          alarmMinutes = newPosition;
+          myDisplay.print("Min>" + longToString(alarmMinutes));
+        }
+        else if (pressCounter == 4)
+        {
+          int hour24Alarm, minute24Alarm;
+          convertTo24Hour(alarmHours, alarmMinutes, isPMorAM, hour24Alarm, minute24Alarm);
+          StoreData("alarmHour", hour24Alarm);
+          StoreData("alarmMins", minute24Alarm);
+          AlarmHour = ReadData("alarmHour");
+          AlarmMins = ReadData("alarmMins");
+          StoreDataString("AMpm", isPMorAM);
+          myDisplay.print("EXIT");
+          delay(1000);
+          currentState = MAIN_MENU;
+          pressCounter = 0;
+        }
+      }
+      else if (currentState == SET_BRIGHTNESS)
+      {
+        if (pressCounter == 1)
+        {
+          Serial.println("here again");
+          newPosition = constrain(newPosition, 1, 8);
+          brightness = newPosition;
+          myDisplay.setIntensity(brightness);
+          myDisplay.print("Bri>" + longToString(brightness));
+          Serial.println("state");
+          Serial.println(currentState);
+          Serial.println("presscounter");
+          Serial.println(pressCounter);
+          Serial.println("new pos");
+          Serial.println(newPosition);
+          Serial.println("to store: ");
+          Serial.println(brightness);
+        }
+        else if (pressCounter == 2)
+        {
+          StoreData("br", brightness);
+          myDisplay.setIntensity(brightness);
+          Serial.println("stored: ");
+          Serial.println(ReadData("br"));
+          myDisplay.print("EXIT");
+          delay(1000);
+          encoder.clearCount();
+          currentState = MAIN_MENU;
+          pressCounter = 0;
+          delay(200);
+        }
+      }
+      else if (currentState == SET_ALARM_STATUS)
+      {
+        if (pressCounter == 1)
+        {
+          newPosition = constrain(newPosition, 0, 1);
+          alarmStatus = (newPosition == 0) ? ALARM_OFF : ALARM_ON;
+          alarmState = String((alarmStatus == ALARM_OFF) ? "OFF" : "ON");
+          myDisplay.print(alarmState);
+        }
+        else if (pressCounter == 2)
+        {
+          StoreDataString("almState", alarmState);
+          alarmState = ReadDataString("almState");
+          myDisplay.print("EXIT");
+          delay(1000);
+          currentState = MAIN_MENU;
+          pressCounter = 0;
+        }
+      }
+      else if (currentState == SET_ALARM_VOL)
+      {
+        if (pressCounter == 1)
+        {
+          newPosition = constrain(newPosition, 0, 30);
+          AlarmVolume = newPosition;
+          myDisplay.print("Vol>" + longToString(AlarmVolume));
+        }
+        else if (pressCounter == 2)
+        {
+          StoreData("AlarmVolume", AlarmVolume);
+          AlarmVolume = ReadData("AlarmVolume");
+          player.volume(AlarmVolume);
+          myDisplay.print("EXIT");
+          delay(1000);
+          currentState = MAIN_MENU;
+          pressCounter = 0;
+        }
+      }
+      else if (currentState == SET_MUSIC)
+      {
+        if (pressCounter == 1)
+        {
+          newPosition = constrain(newPosition, 0, 30);
+          AlarmMusic = newPosition;
+          myDisplay.print(">" + longToString(AlarmMusic));
+          if(newPosition != newestPos)
+          {
+            player.play(AlarmMusic);
+          }
+          newestPos = newPosition;
+        }
+        else if (pressCounter == 2)
+        {
+          player.stop();
+          StoreData("AlarmMusic", AlarmMusic);
+          AlarmMusic = ReadData("AlarmMusic");
+          myDisplay.print("EXIT");
+          delay(1000);
+          currentState = MAIN_MENU;
+          pressCounter = 0;
+        }
+      }
+    }  
+    esp_task_wdt_reset();                 // Reset the watchdog timer
+  }
+}
+
+void alarmRing() {}
+void HandleAlarmTask()
+{
+  unsigned long Otime = millis();
+  DateTime now = rtc.now();
+
+  if (now.hour() == AlarmHour && now.minute() == AlarmMins && alarmState == "ON" && AlarmExit == false)
+  {
+    myDisplay.print("ALARM");
+    player.loop(AlarmMusic);
+    while (true)
+    {
+      unsigned long Ctime = millis();
+      alarmRing();
+
+      if ((Ctime - Otime > 60000) || longpress(PRESS_PIN, 20, 0))
+      {
+        player.stop();
+        Serial.println("alarm goes");
+        AlarmExit = true;
+        break;
+      }
+    }
+  }
+  else if (now.minute() - 1 == AlarmMins)
+  {
+    AlarmExit = false;
+  }
+}
+
+void resetEveryTwoHours()
+{
+  static unsigned long lastResetTime = 0;
+  unsigned long currentTime = millis();
+  if (currentTime - lastResetTime >= 7200000)
+  { // 2 hours (7,200,000 milliseconds)
+    esp_restart();
+  }
+}
+
+String formatTime12Hour(int hour, int minute, bool &isPM)
+{
+  isPM = (hour >= 12);
+  if (hour > 12)
+    hour -= 12;
+  if (hour == 0)
+    hour = 12;
+  char timeString[6];
+  sprintf(timeString, "%d:%02d", hour, minute);
+  return String(timeString);
+}
+
+void handleRoot()
+{
+  if (iotWebConf.handleCaptivePortal())
+  {
+    return;
+  }
+  String s = "<!DOCTYPE html><html lang=\"en\"><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, user-scalable=no\"/>";
+  s += "<title>IotWebConf 01 Minimal</title></head><body>";
+  s += "Go to <a href='config'>configure page</a> to change settings.";
+  s += "</body></html>\n";
+  server.send(200, "text/html", s);
+}
+
+void handleEncoderTask(void *parameter)
+{
+  int oldPosition = -999;
+  for (;;)
+  {
+    int newPosition = encoder.getCount();
+    if (oldPosition != newPosition)
+    {
+      Serial.println(newPosition);
+      oldPosition = newPosition;
+    }
+    esp_task_wdt_reset();                 // Reset the watchdog timer
+    vTaskDelay(100 / portTICK_PERIOD_MS); // Delay for stability
+  }
+}
+
+void handleTimeTask(void *parameter)
+{
+  for (;;)
+  {
+    DateTime now = rtc.now();
+    bool isPM;
+    String timeString = formatTime12Hour(now.hour(), now.minute(), isPM);
+    String displayString = timeString + (isPM ? "." : "");
+    dateNow = String(now.year()) + "/" + String(now.month()) + "/" + String(now.day());
+    timeNow = displayString;
+    esp_task_wdt_reset();                  // Reset the watchdog timer
+    vTaskDelay(1000 / portTICK_PERIOD_MS); // Update every 1 second
+  }
+}
+
+void handleDisplayTask(void *parameter)
+{
+
+  for (;;)
+  {
+    if (millis() - lastDisplayTime >= 10000)
+    { // Every 10 seconds
+      if (myDisplay.displayAnimate())
+      {
+        if (useFirstScroll)
+        {
+          myDisplay.displayScroll(scrolling.c_str(), PA_CENTER, PA_SCROLL_LEFT, 50);
+        }
+        else
+        {
+          myDisplay.displayScroll(dateNow.c_str(), PA_CENTER, PA_SCROLL_LEFT, 50);
+        }
+        delay(100);
+        myDisplay.displayReset();
+        lastDisplayTime = millis();
+        useFirstScroll = !useFirstScroll; // Toggle the flag to alternate the scroll functions
+      }
+    }
+    else
+    {
+      if (myDisplay.displayAnimate())
+      {
+        myDisplay.displayText(timeNow.c_str(), PA_CENTER, myDisplay.getSpeed(), 10000, PA_SCROLL_DOWN, PA_SCROLL_DOWN);
+        delay(100);
+        myDisplay.displayReset();
+      }
+    }
+    if (longpress(PRESS_PIN, 1000, 0))
+    {
+      handleEncoder();
+    }
+
+    HandleAlarmTask();
+    esp_task_wdt_reset();                // Reset the watchdog timer
+    vTaskDelay(10 / portTICK_PERIOD_MS); // Small delay to yield
+  }
+}
+
+String handleNewMessages(int numNewMessages)
+{
+  for (int i = 0; i < numNewMessages; i++)
+  {
+    String chat_id = bot.messages[i].chat_id;
+    String text = bot.messages[i].text;
+    if (chat_id == CHAT_ID)
+    {
+      if (text == "/start")
+      {
+        String welcome = "Welcome to the LED Matrix bot!";
+        bot.sendMessage(CHAT_ID, welcome, "");
+      }
+      else
+      {
+        scrollMessage = text;
+        scrolling = text;
+        StoreDataString("LastMessge", scrollMessage);
+        Serial.println(ReadDataString("LastMessge"));
+        bot.sendMessage(CHAT_ID, "Message received", "");
+      }
+    }
+  }
+  return scrollMessage;
+}
+bool YesNeedToSent = false;
+bool NoNeedToSent = false;
+void handleBotTask(void *parameter)
+{
+  for (;;)
+  {
+    if (millis() - lastTimeBotRan > BOT_REQUEST_DELAY)
+    {
+      int numNewMessages = bot.getUpdates(bot.last_message_received + 1);
+      if (numNewMessages)
+      {
+        handleNewMessages(numNewMessages);
+      }
+      lastTimeBotRan = millis();
+    }
+    /*
+    //Serial.println("debug");
+    if(YesNeedToSent)
+    {
+      bot.sendSimpleMessage(CHAT_ID, "Yes", "");
+      
+        Serial.println("Yes!");
+        YesNeedToSent = false;
+      
+    }
+    else if (NoNeedToSent)
+    {
+        bot.sendSimpleMessage(CHAT_ID, "No", "");
+        Serial.println("NO!");
+        NoNeedToSent = false;
+      
+    }
+    */
+    esp_task_wdt_reset();                // Reset the watchdog timer
+    vTaskDelay(10 / portTICK_PERIOD_MS); // Small delay to yield
+  }
+}
+
+void monitorFreeHeapMemory(void *parameters)
+{
+  for (;;)
+  {
+    Serial.printf("Free heap memory: %d bytes\n", ESP.getFreeHeap());
+    esp_task_wdt_reset();                   // Reset the watchdog timer
+    vTaskDelay(60000 / portTICK_PERIOD_MS); // Check every 60 seconds
+  }
+}
+/*
+void SendBot(void *parameter)
+{
+  for(;;){
+    if(longpress(YesPin , 500 , 0))
+    { 
+      Serial.println("Yes registered");
+      YesNeedToSent = true;
+    }
+    else if (longpress(NoPin , 500 , 0))
+    {
+      NoNeedToSent = true;
+    }
+  }
+}
+*/
+void setup()
+{
+  Serial.begin(115200);
+  Serial2.begin(9600); // Init serial port for DFPlayer Mini
+
+
+  pinMode(ENCODER_PIN_A, INPUT_PULLUP);
+  pinMode(ENCODER_PIN_B, INPUT_PULLUP);
+  pinMode(PRESS_PIN, INPUT_PULLUP);
+  //pinMode(YesPin, INPUT_PULLUP);
+  //pinMode(NoPin, INPUT_PULLUP);
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, ledState);
+
+  if (!rtc.begin())
+  {
+    Serial.println("RTC module is NOT found");
+  }
+
+  encoder.attachSingleEdge(ENCODER_PIN_A, ENCODER_PIN_B);
+  encoder.clearCount();
+
+  iotWebConf.init();
+  server.on("/", handleRoot);
+  server.on("/config", []
+            { iotWebConf.handleConfig(); });
+  server.onNotFound([]
+                    { iotWebConf.handleNotFound(); });
+
+  Serial.println("Starting up...");
+  Serial.println(WiFi.localIP());
+
+  // preferences.begin("my-app", false);
+  // scrollMessage = preferences.getString("LastMessage", "");
+  // AlarmHour = readFromFlash("alarmHour");
+  // AlarmMins = readFromFlash("alarmMins");
+
+  Serial.println("Brightness : ");
+  int br = ReadData("br");
+  AlarmHour = ReadData("alarmHour");
+  AlarmMins = ReadData("alarmMins");
+  alarmState = ReadDataString("almState");
+  AlarmVolume = ReadData("AlarmVolume");
+  AlarmMusic = ReadData("AlarmMusic");
+  if (player.begin(Serial2)) {
+   Serial.println("OK");
+
+    // Set volume to maximum (0 to 30).
+    player.volume(AlarmVolume);
+    // Play the first MP3 file on the SD card
+    //player.play(1);
+  } else {
+    Serial.println("Connecting to DFPlayer Mini failed!");
+  }
+  Serial.println(br);
+  Serial.println(ReadDataString("LastMessge"));
+  // alarmState = preferences.getString("almState", "");
+  myDisplay.begin();
+  myDisplay.setIntensity(br);
+  myDisplay.displayClear();
+  // preferences.putInt("test", 100);
+  // Serial.println(preferences.getInt("test"));
+  scrolling = ReadDataString("LastMessge");
+  Serial.println(scrolling.c_str());
+#ifdef ESP32
+  client.setCACert(TELEGRAM_CERTIFICATE_ROOT);
+#endif
+
+#ifdef ESP8266
+  configTime(0, 0, "pool.ntp.org");
+  client.setTrustAnchors(&cert);
+#elif defined(ESP32)
+  configTime(0, 0, "pool.ntp.org");
+#endif
+
+  // Initialize Watchdog Timer
+  esp_task_wdt_init(WATCHDOG_TIMEOUT, true); // Enable panic so ESP32 restarts
+  esp_task_wdt_add(NULL);                    // Add the main loop task to the watchdog
+
+
+
+  xTaskCreatePinnedToCore(handleEncoderTask, "EncoderTask", 20000, NULL, 1, &TaskEncoderHandle, 1);
+  xTaskCreatePinnedToCore(handleDisplayTask, "DisplayTask", 20000, NULL, 1, &TaskDisplayHandle, 1);
+  xTaskCreatePinnedToCore(handleBotTask, "BotTask", 20000, NULL, 1, NULL, 1);
+  //xTaskCreatePinnedToCore(SendBot, "SendBotTask", 4096, NULL, 1, NULL, 1);
+  xTaskCreatePinnedToCore(handleTimeTask, "TimeTask", 8192, NULL, 1, &TaskTimeHandle, 1);
+  xTaskCreatePinnedToCore(monitorFreeHeapMemory, "MemoryMonitorTask", 4096, NULL, 1, NULL, 1);
+  esp_task_wdt_add(TaskEncoderHandle);
+  esp_task_wdt_add(TaskDisplayHandle);
+  //esp_task_wdt_add(TaskBotHandle);
+  esp_task_wdt_add(TaskTimeHandle);
+  //esp_task_wdt_add(TaskMemoryHandle);
+  //esp_task_wdt_add(TaskSendBotHandle);
+}
+
+void loop()
+{
+  iotWebConf.doLoop();
+  resetEveryTwoHours();
+  esp_task_wdt_reset(); // Reset the watchdog timer in the main loop
+}

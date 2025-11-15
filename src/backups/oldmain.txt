@@ -1,0 +1,111 @@
+#include <Arduino.h>
+#include <converters/converters.h>
+#include <formaters/formaters.h>
+#include <flashUtils/flashUtils.h>
+#include <parsers/parsers.h>
+#include <utils/utils.h>
+#include <wifi/wifi.h>
+#include <telegram/telegram.h>
+#include <encoder/encoder.h>
+#include <display/display.h>
+#include <time/time.h>
+#include <esp_task_wdt.h> 
+#include <Preferences.h>
+//#include <DFPlayerMini_Fast.h>
+// Constants and Macros
+TaskHandle_t TaskEncoderHandle = NULL;
+TaskHandle_t TaskDisplayHandle = NULL;
+TaskHandle_t TaskBotHandle = NULL;
+TaskHandle_t TaskTimeHandle = NULL;
+TaskHandle_t TaskMemoryHandle = NULL;
+TaskHandle_t TaskSendBotHandle = NULL;
+bool ledState = LOW;
+String heartString = "heart";
+
+#define WATCHDOG_TIMEOUT 10
+#define LED_PIN 2
+
+#define PRESS_PIN 32
+
+#define ENCODER_PIN_A 33
+#define ENCODER_PIN_B 25
+
+
+
+void setup()
+{
+  Serial.begin(115200);
+  Serial2.begin(9600);
+  pinMode(ENCODER_PIN_A, INPUT_PULLUP);
+  pinMode(ENCODER_PIN_B, INPUT_PULLUP);
+  pinMode(PRESS_PIN, INPUT_PULLUP);
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, ledState);
+  if (!rtc.begin())
+  {
+    Serial.println("RTC module is NOT found");
+  }
+  encoder.attachSingleEdge(ENCODER_PIN_A, ENCODER_PIN_B);
+  encoder.clearCount();
+  iotWebConf.init();
+  server.on("/", handleRoot);
+  server.on("/config", []
+            { iotWebConf.handleConfig(); });
+  server.onNotFound([]
+                    { iotWebConf.handleNotFound(); });
+  Serial.println("Starting up...");
+  Serial.println(WiFi.localIP());
+  Serial.println("Brightness : ");
+  int br = ReadData("br");
+  AlarmHour = ReadData("alarmHour");
+  AlarmMins = ReadData("alarmMins");
+  alarmState = ReadDataString("almState");
+  AlarmVolume = ReadData("AlarmVolume");
+  AlarmMusic = ReadData("AlarmMusic");
+  if (player.begin(Serial2 , true))
+  {
+    Serial.println("OK");
+    player.volume(AlarmVolume);
+  }
+  else
+  {
+    Serial.println("Connecting to DFPlayer Mini failed!");
+  }
+  Serial.println(br);
+  Serial.println(ReadDataString("LastMessge"));
+  myDisplay.begin();
+  myDisplay.setIntensity(br);
+  myDisplay.displayClear();
+  myDisplay.addChar( 1, customChar);
+  scrolling = ReadDataString("LastMessge");
+  Serial.println(scrolling.c_str());
+#ifdef ESP32
+  client.setCACert(TELEGRAM_CERTIFICATE_ROOT);
+#endif
+#ifdef ESP8266
+  configTime(0, 0, "pool.ntp.org");
+  client.setTrustAnchors(&cert);
+#elif defined(ESP32)
+  configTime(0, 0, "pool.ntp.org");
+#endif
+
+  esp_task_wdt_init(WATCHDOG_TIMEOUT, true); // Enable panic so ESP32 restarts
+  esp_task_wdt_add(NULL);                    // Add the main loop task to the watchdog
+  xTaskCreatePinnedToCore(handleEncoderTask, "EncoderTask", 20000, NULL, 1, &TaskEncoderHandle, 1);
+  xTaskCreatePinnedToCore(handleDisplayTask, "DisplayTask", 20000, NULL, 1, &TaskDisplayHandle, 1);
+  xTaskCreatePinnedToCore(handleBotTask, "BotTask", 20000, NULL, 1, NULL, 1);
+  xTaskCreatePinnedToCore(handleTimeTask, "TimeTask", 8192, NULL, 1, &TaskTimeHandle, 1);
+  xTaskCreatePinnedToCore(monitorFreeHeapMemory, "MemoryMonitorTask", 4096, NULL, 1, NULL, 1);
+  xTaskCreatePinnedToCore(alarmRing , "alarmRingTask", 4096, NULL, 1, NULL, 1);
+  esp_task_wdt_add(TaskEncoderHandle);
+  esp_task_wdt_add(TaskDisplayHandle);
+  esp_task_wdt_add(TaskTimeHandle);
+}
+
+void loop()
+{
+
+  iotWebConf.doLoop();
+  resetEveryTwoHours();
+  esp_task_wdt_reset(); // Reset the watchdog timer in the main loop
+}
