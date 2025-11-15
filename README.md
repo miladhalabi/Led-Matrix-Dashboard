@@ -7,7 +7,7 @@ This document provides a comprehensive overview of the LED Matrix Dashboard proj
 
 The LED Matrix Dashboard is a feature-rich, network-enabled display system built around an ESP32 microcontroller. It drives a MAX7219-based LED matrix to show time, date, custom messages, and animations. The project integrates with Telegram for remote control, fetches prayer times from an online API, and provides a web interface for initial WiFi configuration. It also features a rotary encoder for manual interaction and a DFPlayer Mini for audio alarms.
 
-![The Dashboard : ](photo.jpg)
+<img src="photo.jpg" alt="photo" width="200"/>
 
 ## 2. Features
 
