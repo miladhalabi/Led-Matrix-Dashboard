@@ -1,7 +1,6 @@
 #include <Arduino.h>
 #include <esp_task_wdt.h>
 #include <Preferences.h>
-#include <UniversalTelegramBot.h>
 #include <converters/converters.h>
 #include <formaters/formaters.h>
 #include <flashUtils/flashUtils.h>
@@ -97,11 +96,11 @@ void setup()
   // loadStringArray("prayTimeArray", prayTimeArray, 5);
 
 #ifdef ESP32
-  client.setCACert(TELEGRAM_CERTIFICATE_ROOT);
+  client.setInsecure();
 #endif
 #ifdef ESP8266
   configTime(0, 0, "pool.ntp.org");
-  client.setTrustAnchors(&cert);
+  client.setInsecure();
 #elif defined(ESP32)
   configTime(0, 0, "pool.ntp.org");
 #endif

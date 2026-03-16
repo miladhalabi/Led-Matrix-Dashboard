@@ -2,11 +2,12 @@
 #define _telegram    // (Use a suitable name, usually based on the file name.)
 
 #include <Arduino.h>   // Include Arduino core header to use the String class
+#include <AsyncTelegram2.h>
 
 extern bool ringSent;
 extern String scrolling;
 
-String handleNewMessages(int numNewMessages);
+void handleNewMessage(TBMessage &msg);
 void handleBotTask(void *parameter);
 
 
