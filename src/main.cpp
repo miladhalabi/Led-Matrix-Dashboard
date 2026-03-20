@@ -123,7 +123,6 @@ void setup()
   esp_task_wdt_add(TaskEncoderHandle);
   esp_task_wdt_add(TaskDisplayHandle);
   esp_task_wdt_add(TaskTimeHandle);
-  // esp_task_wdt_add(TaskPrayHandle);
 }
 
 void loop()
