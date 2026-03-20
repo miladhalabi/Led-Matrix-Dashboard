@@ -7,6 +7,10 @@
 extern MD_Parola myDisplay;
 extern uint8_t customChar[];
 extern uint8_t customChar1[];
+extern uint8_t sunGlyph[];
+extern uint8_t cloudGlyph[];
+extern uint8_t rainGlyph[];
+extern uint8_t moonGlyph[];
 void handleDisplayTask(void *parameter);
 
 

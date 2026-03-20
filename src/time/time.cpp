@@ -10,6 +10,7 @@
 #include <encoder/encoder.h>
 #include <telegram/telegram.h>
 #include <prayerTime/prayerTime.h>
+#include <weather/weather.h>
 
 #define PRESS_PIN 32
 
@@ -30,26 +31,30 @@ void handleTimeTask(void *parameter)
     String timeString = formatTime12Hour(now.hour(), now.minute(), isPM);
     String displayString = timeString + (isPM ? "." : "");
 
+    String dateStr = String(now.year()) + "/" + String(now.month()) + "/" + String(now.day());
+    String weatherStr = "  " + weatherTemp + " " + weatherGlyph;
+    String fullDate = dateStr + weatherStr;
+
     if (alarmState == "ON")
     {
       if(prayState == "ON")
       {
-        dateNow = String(now.year()) + "/" + String(now.month()) + "/" + String(now.day()) + " \x01" + " \x02";
+        dateNow = fullDate + " \x01" + " \x02";
       }
       else
       {
-        dateNow = String(now.year()) + "/" + String(now.month()) + "/" + String(now.day()) + " \x01";
+        dateNow = fullDate + " \x01";
       }
     }
     else
     {
       if(prayState == "ON")
       {
-        dateNow = String(now.year()) + "/" + String(now.month()) + "/" + String(now.day()) + " \x02";
+        dateNow = fullDate + " \x02";
       }
       else
       {
-        dateNow = String(now.year()) + "/" + String(now.month()) + "/" + String(now.day());
+        dateNow = fullDate;
       }
     }
     timeNow = displayString;

@@ -7,6 +7,7 @@
 #include <utils/utils.h>
 #include <parsers/parsers.h>
 #include <encoder/encoder.h>
+#include <weather/weather.h>
 
 const int prayTimeArrayLen = 5;
 String prayTimeArray[prayTimeArrayLen];
@@ -15,59 +16,58 @@ bool AzanNow = false;
 bool fetchOnBoot = false;
 bool fetchingAPI = false;
 
-void prayerTimeFetch(int year, int month, int day)
+bool prayerTimeFetch(int year, int month, int day)
 {
+  bool success = false;
   fetchingAPI = true;
   vTaskDelay(10 / portTICK_PERIOD_MS);
-  String serverName = "https://api.aladhan.com/v1/timingsByCity/" + String(day) + "-" + String(month) + "-" + String(year) + "?city=Damascus&country=Syria&method=8";
+  // Use http instead of https to save RAM (SSL overhead)
+  String serverName = "http://api.aladhan.com/v1/timingsByCity/" + String(day) + "-" + String(month) + "-" + String(year) + "?city=Damascus&country=Syria&method=8";
 
   if (WiFi.status() == WL_CONNECTED)
   {
     HTTPClient http;
-    String serverPath = serverName;
-    http.begin(serverPath.c_str());
-
-    // Set timeout to 4 seconds (4000 ms)
-    //http.setTimeout(4000);  // Timeout for connection and response in milliseconds
-    
-    // Record the start time
-    unsigned long startTime = millis();
+    http.begin(serverName.c_str());
 
     // Perform the HTTP GET request
     int httpResponseCode = http.GET();
-
-    // Check if we've exceeded the 4-second timeout
-    if (millis() - startTime >= 6000)
-    {
-      Serial.println("Error: Request timed out.");
-      fetchingAPI = false;
-      http.end();
-      return;  // Exit the function if timed out
-    }
+    
+    Serial.print("Prayer HTTP Code: ");
+    Serial.println(httpResponseCode);
+    Serial.print("Free Heap before parse: ");
+    Serial.println(ESP.getFreeHeap());
 
     // If the response is successful
     if (httpResponseCode > 0)
     {
       String payload = http.getString();
-      DynamicJsonDocument doc(1024);
-      deserializeJson(doc, payload);
+      Serial.println("Prayer Payload: " + payload);
       
-      // Extract prayer times from the JSON response
-      String Fajr = (doc["data"]["timings"]["Fajr"]);
-      String Dhuhr = doc["data"]["timings"]["Dhuhr"];
-      String Asr = doc["data"]["timings"]["Asr"];
-      String Maghrib = doc["data"]["timings"]["Maghrib"];
-      String Isha = doc["data"]["timings"]["Isha"];
+      DynamicJsonDocument doc(4096);
+      DeserializationError error = deserializeJson(doc, payload);
       
-      // Store the fetched prayer times
-      prayTimeArray[0] = Fajr;
-      prayTimeArray[1] = Dhuhr;
-      prayTimeArray[2] = Asr;
-      prayTimeArray[3] = Maghrib;
-      prayTimeArray[4] = Isha;
-      storeStringArray("prayTimeArray", prayTimeArray, prayTimeArrayLen);
+      if (!error) {
+        // Extract prayer times from the JSON response
+        String Fajr = (doc["data"]["timings"]["Fajr"]);
+        String Dhuhr = doc["data"]["timings"]["Dhuhr"];
+        String Asr = doc["data"]["timings"]["Asr"];
+        String Maghrib = doc["data"]["timings"]["Maghrib"];
+        String Isha = doc["data"]["timings"]["Isha"];
+        
+        // Store the fetched prayer times
+        prayTimeArray[0] = Fajr;
+        prayTimeArray[1] = Dhuhr;
+        prayTimeArray[2] = Asr;
+        prayTimeArray[3] = Maghrib;
+        prayTimeArray[4] = Isha;
+        storeStringArray("prayTimeArray", prayTimeArray, prayTimeArrayLen);
 
-      Serial.println("Prayer times fetched successfully.");
+        Serial.println("Prayer times fetched successfully.");
+        success = true;
+      } else {
+        Serial.print("Prayer deserializeJson() failed: ");
+        Serial.println(error.c_str());
+      }
     }
     else
     {
@@ -84,6 +84,7 @@ void prayerTimeFetch(int year, int month, int day)
   }
 
   fetchingAPI = false;
+  return success;
 }
 
 unsigned long lastRTCUpdate = 0; 
@@ -111,21 +112,38 @@ void isPrayTime(void *parameter)
 {
   for(;;)
   {
-    if(prayState == "OFF")
-    {
-      vTaskDelay(10 / portTICK_PERIOD_MS);
-    }
-    else 
-    {
-      updateCachedTime();
+    updateCachedTime();
 
-      if ((now.minute() == 0 && now.second() == 0) || fetchOnBoot == false)
+    if (WiFi.status() == WL_CONNECTED)
+    {
+      bool isTopOfHour = (now.minute() == 0 && now.second() == 0);
+      if (fetchOnBoot == false || isTopOfHour)
       {
         loadStringArray("prayTimeArray", prayTimeArray, prayTimeArrayLen);
-        prayerTimeFetch(now.year(), now.month(), now.day());
-        fetchOnBoot = true;
-      }
+        bool pSuccess = prayerTimeFetch(now.year(), now.month(), now.day());
+        bool wSuccess = fetchWeather();
 
+        if (pSuccess && wSuccess)
+        {
+          fetchOnBoot = true;
+          // Wait so we don't trigger multiple times in the same second
+          vTaskDelay(2000 / portTICK_PERIOD_MS);
+          updateCachedTime();
+        }
+        else
+        {
+          Serial.println("Internet fetch failed, retrying in 30 seconds...");
+          for (int i = 0; i < 30; i++) {
+            vTaskDelay(1000 / portTICK_PERIOD_MS);
+            esp_task_wdt_reset();
+          }
+          continue; // Try again immediately after wait
+        }
+      }
+    }
+
+    if(prayState == "ON")
+    {
       // Parse prayer times
       int fajrHour, fajrMinute, dhuhrHour, dhuhrMinute, asrHour, asrMinute, maghribHour, maghribMinute, ishaHour, ishaMinute;
       
@@ -152,6 +170,8 @@ void isPrayTime(void *parameter)
         AzanTime = false;
       }
     }
+    
     esp_task_wdt_reset(); 
+    vTaskDelay(100 / portTICK_PERIOD_MS);
   }
 }

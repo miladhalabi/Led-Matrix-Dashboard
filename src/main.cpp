@@ -88,6 +88,10 @@ void setup()
   myDisplay.displayClear();
   myDisplay.addChar(1, customChar);
   myDisplay.addChar(2 , customChar1);
+  myDisplay.addChar(3, sunGlyph);
+  myDisplay.addChar(4, cloudGlyph);
+  myDisplay.addChar(5, rainGlyph);
+  myDisplay.addChar(6, moonGlyph);
 
   scrolling = ReadDataString("LastMessge");
 
@@ -119,7 +123,7 @@ void setup()
   esp_task_wdt_add(TaskEncoderHandle);
   esp_task_wdt_add(TaskDisplayHandle);
   esp_task_wdt_add(TaskTimeHandle);
-  esp_task_wdt_add(TaskPrayHandle);
+  // esp_task_wdt_add(TaskPrayHandle);
 }
 
 void loop()

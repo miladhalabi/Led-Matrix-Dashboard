@@ -12,6 +12,7 @@
 #include <encoder/encoder.h>
 #include <usersManagement/usersManagement.h>
 #include <prayerTime/prayerTime.h>
+#include <weather/weather.h>
 
 #define BOT_TOKEN "8638569625:AAF81cLSgBvPPXOc6Yphx2eWlByATaUZgsg"
 #define CHAT_ID "818675367"
@@ -25,6 +26,9 @@
 #define CB_VOL_MENU      "vol_menu"
 #define CB_AZAN_TOGGLE   "azan_toggle"
 #define CB_REFRESH       "refresh"
+#define CB_WEATHER_REF   "weather_ref"
+#define CB_RING          "ring_bot"
+#define CB_ALARM_TOG_M   "alm_tog_m"
 
 #define CB_ALARM_H_UP    "alm_h_u"
 #define CB_ALARM_H_DN    "alm_h_d"
@@ -48,15 +52,25 @@ bool draftIsPm = false;
 bool isEditingMsg = false;
 
 void showMainMenu(TBMessage &msg, bool edit = false) {
-    InlineKeyboard mainKbd;
-    mainKbd.addButton("📝 Edit Msg", CB_EDIT_MSG, KeyboardButtonQuery);
-    mainKbd.addButton("⏰ Alarm", CB_ALARM_MENU, KeyboardButtonQuery);
+    InlineKeyboard mainKbd(BUFFER_MEDIUM);
+    mainKbd.addButton("📝 Msg", CB_EDIT_MSG, KeyboardButtonQuery);
+    mainKbd.addButton("🔔 Ring", CB_RING, KeyboardButtonQuery);
     mainKbd.addRow();
+    
     mainKbd.addButton("🕒 Time", CB_TIME_MENU, KeyboardButtonQuery);
-    mainKbd.addButton("🔊 Volume", CB_VOL_MENU, KeyboardButtonQuery);
+    mainKbd.addButton("🔊 Vol", CB_VOL_MENU, KeyboardButtonQuery);
     mainKbd.addRow();
+
+    mainKbd.addButton("⏰ Set", CB_ALARM_MENU, KeyboardButtonQuery);
+    String almToggleLabel = (alarmState == "ON") ? "⏰ ON" : "⏰ OFF";
+    mainKbd.addButton(almToggleLabel.c_str(), CB_ALARM_TOG_M, KeyboardButtonQuery);
+    mainKbd.addRow();
+
     String azanLabel = (prayState == "ON") ? "🕋 Azan: ON" : "🕋 Azan: OFF";
     mainKbd.addButton(azanLabel.c_str(), CB_AZAN_TOGGLE, KeyboardButtonQuery);
+    mainKbd.addRow();
+    
+    mainKbd.addButton("🌤 Weather", CB_WEATHER_REF, KeyboardButtonQuery);
     mainKbd.addButton("🔄 Refresh", CB_REFRESH, KeyboardButtonQuery);
 
     String status = "🏠 *LED Matrix Dashboard*\n";
@@ -67,7 +81,8 @@ void showMainMenu(TBMessage &msg, bool edit = false) {
     String almTime = formatTime12Hour(AlarmHour, AlarmMins, pm);
     status += "⏰ *Alarm:* " + almTime + (pm ? " PM" : " AM") + " (" + alarmState + ")\n";
     status += "🕋 *Azan:* " + prayState + "\n";
-    status += "🔊 *Volume:* " + String(AlarmVolume);
+    status += "🔊 *Volume:* " + String(AlarmVolume) + "\n";
+    status += "🌤 *Weather:* " + weatherTemp;
 
     if (edit) {
         bot.editMessage(msg, status.c_str(), mainKbd);
@@ -176,11 +191,25 @@ void handleNewMessage(TBMessage &msg)
         String data = msg.callbackQueryData;
         
         if (data == CB_REFRESH || data == CB_MAIN) {
+            fetchWeather();
             showMainMenu(msg, true);
         }
         else if (data == CB_AZAN_TOGGLE) {
             azanSetter(prayState == "ON" ? "azan off" : "azan on");
             showMainMenu(msg, true);
+        }
+        else if (data == CB_ALARM_TOG_M) {
+            alarmSetter(alarmState == "ON" ? "ALARM OFF" : "ALARM ON");
+            showMainMenu(msg, true);
+        }
+        else if (data == CB_WEATHER_REF) {
+            fetchWeather();
+            showMainMenu(msg, true);
+        }
+        else if (data == CB_RING) {
+            ringSent = true;
+            bot.endQuery(msg, "Ringing...");
+            return;
         }
         else if (data == CB_EDIT_MSG) {
             isEditingMsg = true;
