@@ -13,8 +13,6 @@
 #include <usersManagement/usersManagement.h>
 #include <prayerTime/prayerTime.h>
 #include <weather/weather.h>
-#include <HTTPUpdate.h>
-#include <display/display.h>
 
 #define BOT_TOKEN "8638569625:AAF81cLSgBvPPXOc6Yphx2eWlByATaUZgsg"
 #define CHAT_ID "818675367"
@@ -319,44 +317,6 @@ void handleNewMessage(TBMessage &msg)
 
     if (text == "/start" || text == "help") {
         showMainMenu(msg);
-    }
-    else if (text.startsWith("update ")) {
-        String url = text.substring(7);
-        url.trim();
-        bot.sendMessage(msg, "Starting OTA update from:\n" + url + "\n\nPlease wait...");
-        
-        myDisplay.displayClear();
-        myDisplay.displayText("UPDATING...", PA_CENTER, 50, 0, PA_PRINT, PA_PRINT);
-        myDisplay.displayAnimate();
-        
-        // Disable watchdog so ESP32 doesn't restart during download
-        esp_task_wdt_delete(NULL);
-        
-        httpUpdate.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-        t_httpUpdate_return ret = httpUpdate.update(client, url);
-        
-        switch (ret) {
-            case HTTP_UPDATE_FAILED: {
-                String err = "Update failed.\nError (" + String(httpUpdate.getLastError()) + "): " + httpUpdate.getLastErrorString();
-                bot.sendMessage(msg, err);
-                Serial.println(err);
-                // Re-enable watchdog
-                esp_task_wdt_add(NULL);
-                myDisplay.displayClear(); // clear "UPDATING..."
-                break;
-            }
-            case HTTP_UPDATE_NO_UPDATES:
-                bot.sendMessage(msg, "No updates available.");
-                esp_task_wdt_add(NULL);
-                myDisplay.displayClear(); // clear "UPDATING..."
-                break;
-            case HTTP_UPDATE_OK:
-                bot.sendMessage(msg, "Update successful! Rebooting...");
-                Serial.println("Update OK. Rebooting...");
-                delay(1000);
-                ESP.restart();
-                break;
-        }
     }
     else if(text == "ring")
     {
