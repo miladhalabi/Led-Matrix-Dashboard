@@ -6,6 +6,8 @@
 
 extern bool ringSent;
 extern String scrolling;
+extern volatile bool isOTAUpdating;
+extern String otaProgressText;
 
 void handleNewMessage(TBMessage &msg);
 void handleBotTask(void *parameter);

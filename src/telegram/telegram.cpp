@@ -48,6 +48,10 @@ unsigned long lastTimeBotRan;
 bool ringSent = false;
 String scrolling;
 
+// OTA update state (shared with DisplayTask)
+volatile bool isOTAUpdating = false;
+String otaProgressText = "";
+
 // Draft variables for interactive editing
 int draftHour = 12;
 int draftMin = 0;
@@ -58,9 +62,9 @@ String otaFilePath = "";
 void handleOTAUpdate(TBMessage &msg, const String &filePath) {
     bot.sendMessage(msg, "Starting firmware update from Telegram file...");
     
-    myDisplay.displayClear();
-    myDisplay.displayText("UPDATING...", PA_CENTER, 50, 0, PA_PRINT, PA_PRINT);
-    myDisplay.displayAnimate();
+    // Signal the DisplayTask to show OTA status
+    otaProgressText = "UPDATING...";
+    isOTAUpdating = true;
     
     // Build the download URL using the Telegram Bot API file download endpoint
     // AsyncTelegram2 may return a full URL or just a relative path
@@ -99,12 +103,14 @@ void handleOTAUpdate(TBMessage &msg, const String &filePath) {
                 Serial.println("Writing firmware to flash...");
                 size_t written = Update.writeStream(*stream);
                 
-                if (written == contentLength) {
+                if (written == (size_t)contentLength) {
                     Serial.println("Firmware written successfully!");
                     if (Update.end()) {
                         Serial.println("Update complete!");
                         if (Update.isFinished()) {
+                            otaProgressText = "DONE!";
                             Serial.println("Restarting...");
+                            delay(2000);
                             ESP.restart();
                         }
                     } else {
@@ -113,10 +119,6 @@ void handleOTAUpdate(TBMessage &msg, const String &filePath) {
                     }
                 } else {
                     Serial.println("Written bytes mismatch!");
-                    Serial.print("Written: ");
-                    Serial.print(written);
-                    Serial.print(" Expected: ");
-                    Serial.println(contentLength);
                 }
             } else {
                 Serial.println("Not enough space for OTA");

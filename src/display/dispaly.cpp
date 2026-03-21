@@ -45,6 +45,16 @@ void handleDisplayTask(void *parameter)
 {
   for (;;)
   {
+    // If OTA update is in progress, show the OTA status text instead of normal display
+    if (isOTAUpdating) {
+      if (myDisplay.displayAnimate()) {
+        myDisplay.displayScroll(otaProgressText.c_str(), PA_CENTER, PA_SCROLL_LEFT, 50);
+      }
+      esp_task_wdt_reset();
+      vTaskDelay(10 / portTICK_PERIOD_MS);
+      continue;
+    }
+
     if (millis() - lastDisplayTime >= 10000)
     { // Every 10 seconds
       if (myDisplay.displayAnimate())
