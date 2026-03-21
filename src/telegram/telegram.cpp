@@ -13,6 +13,9 @@
 #include <usersManagement/usersManagement.h>
 #include <prayerTime/prayerTime.h>
 #include <weather/weather.h>
+#include <HTTPUpdate.h>
+#include <Update.h>
+#include <display/display.h>
 
 #define BOT_TOKEN "8638569625:AAF81cLSgBvPPXOc6Yphx2eWlByATaUZgsg"
 #define CHAT_ID "818675367"
@@ -50,6 +53,89 @@ int draftHour = 12;
 int draftMin = 0;
 bool draftIsPm = false;
 bool isEditingMsg = false;
+String otaFilePath = "";
+
+void handleOTAUpdate(TBMessage &msg, const String &filePath) {
+    bot.sendMessage(msg, "Starting firmware update from Telegram file...");
+    
+    myDisplay.displayClear();
+    myDisplay.displayText("UPDATING...", PA_CENTER, 50, 0, PA_PRINT, PA_PRINT);
+    myDisplay.displayAnimate();
+    
+    // Build the download URL using the Telegram Bot API file download endpoint
+    // AsyncTelegram2 may return a full URL or just a relative path
+    String url;
+    if (filePath.startsWith("https://")) {
+        url = filePath;
+    } else {
+        url = "https://api.telegram.org/file/bot" + String(BOT_TOKEN) + "/" + filePath;
+    }
+    
+    Serial.println("OTA URL: " + url);
+    
+    // Disable watchdog to prevent restart during download
+    esp_task_wdt_delete(NULL);
+    
+    // Close the Telegram connection to free up RAM for the download
+    client.stop();
+    
+    HTTPClient http;
+    http.begin(client, url);
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+    
+    int httpCode = http.GET();
+    Serial.print("OTA HTTP Code: ");
+    Serial.println(httpCode);
+    
+    if (httpCode == 200) {
+        int contentLength = http.getSize();
+        Serial.print("OTA File Size: ");
+        Serial.println(contentLength);
+        
+        if (contentLength > 0) {
+            WiFiClient *stream = http.getStreamPtr();
+            
+            if (Update.begin(contentLength)) {
+                Serial.println("Writing firmware to flash...");
+                size_t written = Update.writeStream(*stream);
+                
+                if (written == contentLength) {
+                    Serial.println("Firmware written successfully!");
+                    if (Update.end()) {
+                        Serial.println("Update complete!");
+                        if (Update.isFinished()) {
+                            Serial.println("Restarting...");
+                            ESP.restart();
+                        }
+                    } else {
+                        Serial.print("Update failed: ");
+                        Serial.println(Update.getError());
+                    }
+                } else {
+                    Serial.println("Written bytes mismatch!");
+                    Serial.print("Written: ");
+                    Serial.print(written);
+                    Serial.print(" Expected: ");
+                    Serial.println(contentLength);
+                }
+            } else {
+                Serial.println("Not enough space for OTA");
+            }
+        } else {
+            Serial.println("Content length is 0 or unknown");
+        }
+    } else {
+        Serial.print("HTTP GET failed: ");
+        Serial.println(httpCode);
+    }
+    
+    http.end();
+    
+    // If we reach here, the update failed - reboot to restore Telegram connection
+    Serial.println("OTA failed, rebooting to restore connection...");
+    delay(1000);
+    ESP.restart();
+}
 
 void showMainMenu(TBMessage &msg, bool edit = false) {
     InlineKeyboard mainKbd(BUFFER_MEDIUM);
@@ -185,6 +271,22 @@ void handleNewMessage(TBMessage &msg)
     }
 
     if (chat_id != ChatUser) return;
+
+    // Handle document uploads (.bin firmware files)
+    if (msg.messageType == MessageDocument && msg.document.file_exists) {
+        if (msg.document.file_path.endsWith(".bin")) {
+            otaFilePath = msg.document.file_path;
+            String info = "Firmware file received!\n";
+            info += "File: " + String(msg.document.file_name) + "\n";
+            info += "Size: " + String(msg.document.file_size) + " bytes\n\n";
+            info += "Type 'update' to start the firmware update.";
+            bot.sendMessage(msg, info);
+            return;
+        } else {
+            bot.sendMessage(msg, "Only .bin firmware files are supported.");
+            return;
+        }
+    }
 
     // Handle button clicks
     if (msg.messageType == MessageQuery) {
@@ -322,6 +424,14 @@ void handleNewMessage(TBMessage &msg)
     {
         ringSent = true;
         bot.sendMessage(msg, "ringing...");
+    }
+    else if (text == "update")
+    {
+        if (otaFilePath.length() > 0) {
+            handleOTAUpdate(msg, otaFilePath);
+        } else {
+            bot.sendMessage(msg, "No firmware file received yet. Send a .bin file first.");
+        }
     }
     else if (text.startsWith("alarm"))
     {

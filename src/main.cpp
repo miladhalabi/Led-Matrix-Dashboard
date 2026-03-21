@@ -33,6 +33,7 @@ void setup()
 {
   Serial.begin(115200);
   Serial2.begin(9600);
+  Serial.println("===================UPDATED===================");
 
   pinMode(ENCODER_PIN_A, INPUT_PULLUP);
   pinMode(ENCODER_PIN_B, INPUT_PULLUP);
