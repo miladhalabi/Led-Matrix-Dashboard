@@ -435,6 +435,17 @@ void handleNewMessage(TBMessage &msg)
             bot.sendMessage(msg, "No firmware file received yet. Send a .bin file first.");
         }
     }
+    else if (text == "praytime" || text == "/praytimes")
+    {
+        String response = "Prayer Times for Today\n";
+        response += "-----------------------\n";
+        response += "Fajr:    " + prayTimeArray[0] + "\n";
+        response += "Dhuhr:   " + prayTimeArray[1] + "\n";
+        response += "Asr:     " + prayTimeArray[2] + "\n";
+        response += "Maghrib: " + prayTimeArray[3] + "\n";
+        response += "Isha:    " + prayTimeArray[4];
+        bot.sendMessage(msg, response);
+    }
     else if (text.startsWith("alarm"))
     {
         if(alarmSetter(text))
