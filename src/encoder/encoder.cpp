@@ -8,16 +8,12 @@
 #include <utils/utils.h>
 #include <flashUtils/flashUtils.h>
 #include <converters/converters.h>
+#include <settings/settings.h>
 #define PRESS_PIN 32
 
 ESP32Encoder encoder;
 
 int newestPos = 0;
-int brightness;
-int AlarmVolume = 20;
-int AlarmMusic = 1;
-String alarmState = "";
-String prayState = "";
 int hours = 0, minutes = 0, day = 0, month = 0, year = 0, amPm = 1;
 
 void handleEncoder()
@@ -47,6 +43,13 @@ void handleEncoder()
   String isPMorAM = "";
   int alarmHours = 0, alarmMinutes = 0;
   AlarmStatus alarmStatus = ALARM_OFF;
+  // Values being edited in the menu. They are saved only when the user confirms.
+  const Settings cfg = settings::get();
+  int draftBrightness = cfg.brightness;
+  int draftVolume = cfg.volume;
+  int draftMusic = cfg.music;
+  bool draftAlarmOn = cfg.alarmEnabled;
+  bool draftPrayerOn = cfg.prayerEnabled;
   int veryoldPos = 0;
   DateTime now = rtc.now();
   hours = now.hour();
@@ -290,11 +293,7 @@ void handleEncoder()
         {
           int hour24Alarm, minute24Alarm;
           convertTo24Hour(alarmHours, alarmMinutes, isPMorAM, hour24Alarm, minute24Alarm);
-          StoreData("alarmHour", hour24Alarm);
-          StoreData("alarmMins", minute24Alarm);
-          AlarmHour = ReadData("alarmHour");
-          AlarmMins = ReadData("alarmMins");
-          StoreDataString("AMpm", isPMorAM);
+          settings::setAlarmTime(hour24Alarm, minute24Alarm);
           myDisplay.print("EXIT");
           delay(1000);
           currentState = MAIN_MENU;
@@ -305,26 +304,15 @@ void handleEncoder()
       {
         if (pressCounter == 1)
         {
-          Serial.println("here again");
           newPosition = constrain(newPosition, 1, 8);
-          brightness = newPosition;
-          myDisplay.setIntensity(brightness);
-          myDisplay.print("Bri>" + longToString(brightness));
-          Serial.println("state");
-          Serial.println(currentState);
-          Serial.println("presscounter");
-          Serial.println(pressCounter);
-          Serial.println("new pos");
-          Serial.println(newPosition);
-          Serial.println("to store: ");
-          Serial.println(brightness);
+          draftBrightness = newPosition;
+          myDisplay.setIntensity(draftBrightness);
+          myDisplay.print("Bri>" + longToString(draftBrightness));
         }
         else if (pressCounter == 2)
         {
-          StoreData("br", brightness);
-          myDisplay.setIntensity(brightness);
-          Serial.println("stored: ");
-          Serial.println(ReadData("br"));
+          settings::setBrightness(draftBrightness);
+          myDisplay.setIntensity(draftBrightness);
           myDisplay.print("EXIT");
           delay(1000);
           encoder.clearCount();
@@ -338,13 +326,12 @@ void handleEncoder()
         if (pressCounter == 1)
         {
           newPosition = constrain(newPosition, 1, 100);
-          alarmState = (newPosition % 2 == 0) ? "ON" : "OFF";
-          myDisplay.print(alarmState);
+          draftAlarmOn = (newPosition % 2 == 0);
+          myDisplay.print(draftAlarmOn ? "ON" : "OFF");
         }
         else if (pressCounter == 2)
         {
-          StoreDataString("almState", alarmState);
-          alarmState = ReadDataString("almState");
+          settings::setAlarmEnabled(draftAlarmOn);
           myDisplay.print("EXIT");
           delay(1000);
           currentState = MAIN_MENU;
@@ -356,16 +343,15 @@ void handleEncoder()
         if (pressCounter == 1)
         {
           newPosition = constrain(newPosition, 0, 30);
-          AlarmVolume = newPosition;
-          myDisplay.print("Vol>" + longToString(AlarmVolume));
+          draftVolume = newPosition;
+          myDisplay.print("Vol>" + longToString(draftVolume));
         }
         else if (pressCounter == 2)
         {
-          StoreData("AlarmVolume", AlarmVolume);
-          AlarmVolume = ReadData("AlarmVolume");
+          settings::setVolume(draftVolume);
           //player.reset();
           delay(100);
-          player.volume(AlarmVolume);
+          player.volume(draftVolume);
           //printDetail(player.readType(), player.read());
           myDisplay.print("EXIT");
           delay(1000);
@@ -378,8 +364,8 @@ void handleEncoder()
         if (pressCounter == 1)
         {
           newPosition = constrain(newPosition, 0, 30);
-          AlarmMusic = newPosition;
-          myDisplay.print(">" + longToString(AlarmMusic));
+          draftMusic = newPosition;
+          myDisplay.print(">" + longToString(draftMusic));
           if (newPosition != newestPos)
           {
             Serial.print("newPosition : ");
@@ -391,7 +377,7 @@ void handleEncoder()
             Serial.println("been here");
             player.stop();
             delay(100);
-            player.play(AlarmMusic);
+            player.play(draftMusic);
             delay(50);
           }
           newestPos = newPosition;
@@ -400,8 +386,7 @@ void handleEncoder()
         {
           player.stop();
           //player.reset();
-          StoreData("AlarmMusic", AlarmMusic);
-          AlarmMusic = ReadData("AlarmMusic");
+          settings::setMusic(draftMusic);
           myDisplay.print("EXIT");
           delay(1000);
           currentState = MAIN_MENU;
@@ -413,13 +398,12 @@ void handleEncoder()
         if (pressCounter == 1)
         {
           newPosition = constrain(newPosition, 1, 100);
-          prayState = (newPosition % 2 == 0) ? "ON" : "OFF";
-          myDisplay.print(prayState);
+          draftPrayerOn = (newPosition % 2 == 0);
+          myDisplay.print(draftPrayerOn ? "ON" : "OFF");
         }
         else if (pressCounter == 2)
         {
-          StoreDataString("prayState", prayState);
-          prayState = ReadDataString("prayState");
+          settings::setPrayerEnabled(draftPrayerOn);
           myDisplay.print("EXIT");
           delay(1000);
           currentState = MAIN_MENU;

@@ -6,12 +6,6 @@
 
 //extern Preferences preferences;
 
-void StoreData(const char *key, const int val);
-int ReadData(const char *val);
-void StoreDataString(const char *key, const String val);
-String ReadDataString(const char *val);
-void writeToFlash(const char *key, int valueToStore);
-int readFromFlash(const char *key);
 void storeStringArray(String keyPrefix, String arr[], int size);
 void loadStringArray(String keyPrefix, String arr[], int size);
 

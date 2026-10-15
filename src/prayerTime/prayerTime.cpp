@@ -8,6 +8,7 @@
 #include <parsers/parsers.h>
 #include <encoder/encoder.h>
 #include <weather/weather.h>
+#include <settings/settings.h>
 
 const int prayTimeArrayLen = 5;
 String prayTimeArray[prayTimeArrayLen];
@@ -142,7 +143,7 @@ void isPrayTime(void *parameter)
       }
     }
 
-    if(prayState == "ON")
+    if(settings::get().prayerEnabled)
     {
       // Parse prayer times
       int fajrHour, fajrMinute, dhuhrHour, dhuhrMinute, asrHour, asrMinute, maghribHour, maghribMinute, ishaHour, ishaMinute;

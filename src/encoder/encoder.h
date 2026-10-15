@@ -7,11 +7,6 @@
 
 extern ESP32Encoder encoder;
 
-extern int brightness;
-extern int AlarmVolume;
-extern int AlarmMusic;
-extern String alarmState;
-extern String prayState;
 extern int hours , minutes, day, month, year, amPm;
 
 

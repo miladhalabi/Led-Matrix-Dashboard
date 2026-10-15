@@ -11,8 +11,6 @@ extern RTC_DS3231 rtc;
 extern DFRobotDFPlayerMini player;
 
 extern String timeNow, dateNow;
-extern int AlarmHour;
-extern int AlarmMins;
 
 
 void handleTimeTask(void *parameter);

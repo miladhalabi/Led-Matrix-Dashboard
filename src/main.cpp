@@ -4,6 +4,7 @@
 #include <converters/converters.h>
 #include <formaters/formaters.h>
 #include <flashUtils/flashUtils.h>
+#include <settings/settings.h>
 #include <parsers/parsers.h>
 #include <utils/utils.h>
 #include <wifi/wifi.h>
@@ -61,32 +62,22 @@ void setup()
 
   Serial.println("Starting up...");
   Serial.println(WiFi.localIP());
-  Serial.println("Brightness : ");
-
-  int br = ReadData("br");
-
-  AlarmHour = ReadData("alarmHour");
-  AlarmMins = ReadData("alarmMins");
-  alarmState = ReadDataString("almState");
-  prayState = ReadDataString("prayState");
-  AlarmVolume = ReadData("AlarmVolume");
-  AlarmMusic = ReadData("AlarmMusic");
+  settings::load();
+  const Settings cfg = settings::get();
 
   if (player.begin(Serial2, true))
   {
     Serial.println("OK");
-    player.volume(AlarmVolume);
+    player.volume(cfg.volume);
   }
   else
   {
     Serial.println("Connecting to DFPlayer Mini failed!");
   }
 
-  Serial.println(br);
-  Serial.println(ReadDataString("LastMessge"));
 
   myDisplay.begin();
-  myDisplay.setIntensity(br);
+  myDisplay.setIntensity(cfg.brightness);
   myDisplay.displayClear();
   myDisplay.addChar(1, customChar);
   myDisplay.addChar(2 , customChar1);
@@ -95,7 +86,7 @@ void setup()
   myDisplay.addChar(5, rainGlyph);
   myDisplay.addChar(6, moonGlyph);
 
-  scrolling = ReadDataString("LastMessge");
+  scrolling = settings::lastMessage();
 
   Serial.println(scrolling.c_str());
 

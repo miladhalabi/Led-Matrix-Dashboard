@@ -1,24 +1,20 @@
 #include <Arduino.h>
 #include <parsers/parsers.h>
-#include <encoder/encoder.h>
-#include <flashUtils/flashUtils.h>
 #include <converters/converters.h>
 #include <time/time.h>
-#include <encoder/encoder.h>
+#include <settings/settings.h>
 
 bool alarmSetter(String timeToAlarm)
 {
   timeToAlarm.toUpperCase();
   if (timeToAlarm == "ALARM ON")
   {
-    StoreDataString("almState", "ON");
-    alarmState = ReadDataString("almState");
+    settings::setAlarmEnabled(true);
     return true;
   }
   else if (timeToAlarm == "ALARM OFF")
   {
-    StoreDataString("almState", "OFF");
-    alarmState = ReadDataString("almState");
+    settings::setAlarmEnabled(false);
     return true;
   }
   else
@@ -32,11 +28,7 @@ bool alarmSetter(String timeToAlarm)
     {
       int hour24Alarm, minute24Alarm;
       convertTo24Hour(alarmHourTelegram, alarmMinuteTelegram, NightDay, hour24Alarm, minute24Alarm);
-      StoreData("alarmHour", hour24Alarm);
-      StoreData("alarmMins", minute24Alarm);
-      AlarmHour = ReadData("alarmHour");
-      AlarmMins = ReadData("alarmMins");
-      StoreDataString("AMpm", NightDay);
+      settings::setAlarmTime(hour24Alarm, minute24Alarm);
       return true;
     }
     return false;
@@ -84,12 +76,11 @@ bool volumeSetter(String volumeMessage)
 {
   String cleanedVolume = removeStartWord(volumeMessage, "volume");
   int volumeInInt = cleanedVolume.toInt();
-  if (volumeInInt <= 30)
+  if (volumeInInt >= 0 && volumeInInt <= 30)
   {
-    StoreData("AlarmVolume", volumeInInt);
-    AlarmVolume = ReadData("AlarmVolume");
+    settings::setVolume(volumeInInt);
     delay(100);
-    player.volume(AlarmVolume);
+    player.volume(volumeInInt);
     return true;
   }
   else
@@ -104,15 +95,13 @@ bool azanSetter(String azanStateFromTelegram)
   azanStateFromTelegram.toUpperCase();
   if (azanStateFromTelegram == "AZAN ON")
   {
-    StoreDataString("prayState", "ON");
-    prayState = ReadDataString("prayState");
+    settings::setPrayerEnabled(true);
     return true;
   }
   else if (azanStateFromTelegram == "AZAN OFF")
   {
-    StoreDataString("prayState", "OFF");
-    prayState = ReadDataString("prayState");
-    return true;    
+    settings::setPrayerEnabled(false);
+    return true;
   }
   else
   {

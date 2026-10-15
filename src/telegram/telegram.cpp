@@ -16,6 +16,7 @@
 #include <HTTPUpdate.h>
 #include <Update.h>
 #include <display/display.h>
+#include <settings/settings.h>
 
 #define BOT_REQUEST_DELAY 1000
 
@@ -139,6 +140,7 @@ void handleOTAUpdate(TBMessage &msg, const String &filePath) {
 
 void showMainMenu(TBMessage &msg, bool edit = false) {
     InlineKeyboard mainKbd(BUFFER_MEDIUM);
+    const Settings cfg = settings::get();
     mainKbd.addButton("📝 Msg", CB_EDIT_MSG, KeyboardButtonQuery);
     mainKbd.addButton("🔔 Ring", CB_RING, KeyboardButtonQuery);
     mainKbd.addRow();
@@ -148,11 +150,11 @@ void showMainMenu(TBMessage &msg, bool edit = false) {
     mainKbd.addRow();
 
     mainKbd.addButton("⏰ Set", CB_ALARM_MENU, KeyboardButtonQuery);
-    String almToggleLabel = (alarmState == "ON") ? "⏰ ON" : "⏰ OFF";
+    String almToggleLabel = cfg.alarmEnabled ? "⏰ ON" : "⏰ OFF";
     mainKbd.addButton(almToggleLabel.c_str(), CB_ALARM_TOG_M, KeyboardButtonQuery);
     mainKbd.addRow();
 
-    String azanLabel = (prayState == "ON") ? "🕋 Azan: ON" : "🕋 Azan: OFF";
+    String azanLabel = cfg.prayerEnabled ? "🕋 Azan: ON" : "🕋 Azan: OFF";
     mainKbd.addButton(azanLabel.c_str(), CB_AZAN_TOGGLE, KeyboardButtonQuery);
     mainKbd.addRow();
     
@@ -164,10 +166,10 @@ void showMainMenu(TBMessage &msg, bool edit = false) {
     status += "💬 *Msg:* \"" + scrolling + "\"\n";
     
     bool pm = false;
-    String almTime = formatTime12Hour(AlarmHour, AlarmMins, pm);
-    status += "⏰ *Alarm:* " + almTime + (pm ? " PM" : " AM") + " (" + alarmState + ")\n";
-    status += "🕋 *Azan:* " + prayState + "\n";
-    status += "🔊 *Volume:* " + String(AlarmVolume) + "\n";
+    String almTime = formatTime12Hour(cfg.alarmHour, cfg.alarmMinute, pm);
+    status += "⏰ *Alarm:* " + almTime + (pm ? " PM" : " AM") + " (" + String(cfg.alarmEnabled ? "ON" : "OFF") + ")\n";
+    status += "🕋 *Azan:* " + String(cfg.prayerEnabled ? "ON" : "OFF") + "\n";
+    status += "🔊 *Volume:* " + String(cfg.volume) + "\n";
     status += "🌤 *Weather:* " + weatherTemp;
 
     if (edit) {
@@ -195,7 +197,7 @@ void showAlarmMenu(TBMessage &msg) {
     almKbd.addButton(draftIsPm ? "Switch to AM" : "Switch to PM", CB_ALARM_P_TOG, KeyboardButtonQuery);
     almKbd.addRow();
     
-    String toggleLabel = (alarmState == "ON") ? "Turn OFF" : "Turn ON";
+    String toggleLabel = settings::get().alarmEnabled ? "Turn OFF" : "Turn ON";
     almKbd.addButton(toggleLabel.c_str(), CB_ALARM_TOGGLE, KeyboardButtonQuery);
     almKbd.addRow();
 
@@ -292,11 +294,11 @@ void handleNewMessage(TBMessage &msg)
             showMainMenu(msg, true);
         }
         else if (data == CB_AZAN_TOGGLE) {
-            azanSetter(prayState == "ON" ? "azan off" : "azan on");
+            azanSetter(settings::get().prayerEnabled ? "azan off" : "azan on");
             showMainMenu(msg, true);
         }
         else if (data == CB_ALARM_TOG_M) {
-            alarmSetter(alarmState == "ON" ? "ALARM OFF" : "ALARM ON");
+            alarmSetter(settings::get().alarmEnabled ? "ALARM OFF" : "ALARM ON");
             showMainMenu(msg, true);
         }
         else if (data == CB_WEATHER_REF) {
@@ -315,7 +317,8 @@ void handleNewMessage(TBMessage &msg)
         else if (data == CB_ALARM_MENU) {
             // Load current alarm into draft
             draftIsPm = false;
-            String alm12 = formatTime12Hour(AlarmHour, AlarmMins, draftIsPm);
+            const Settings cfg = settings::get();
+            String alm12 = formatTime12Hour(cfg.alarmHour, cfg.alarmMinute, draftIsPm);
             parseTime(alm12, draftHour, draftMin, data); // reuse data as temp
             showAlarmMenu(msg);
         }
@@ -340,7 +343,7 @@ void handleNewMessage(TBMessage &msg)
             showAlarmMenu(msg);
         }
         else if (data == CB_ALARM_TOGGLE) {
-            alarmSetter(alarmState == "ON" ? "ALARM OFF" : "ALARM ON");
+            alarmSetter(settings::get().alarmEnabled ? "ALARM OFF" : "ALARM ON");
             showAlarmMenu(msg);
         }
         else if (data == CB_VOL_MENU) {
@@ -389,10 +392,7 @@ void handleNewMessage(TBMessage &msg)
         else if (data == CB_ALARM_SAVE) {
             int h24, m24;
             convertTo24Hour(draftHour, draftMin, draftIsPm ? "PM" : "AM", h24, m24);
-            StoreData("alarmHour", h24);
-            StoreData("alarmMins", m24);
-            AlarmHour = h24;
-            AlarmMins = m24;
+            settings::setAlarmTime(h24, m24);
             bot.sendMessage(msg, "✅ Alarm saved!");
             showMainMenu(msg);
         }
@@ -405,7 +405,7 @@ void handleNewMessage(TBMessage &msg)
     if (isEditingMsg) {
         scrollMessage = text;
         scrolling = text;
-        StoreDataString("LastMessge", scrollMessage);
+        settings::setLastMessage(scrollMessage);
         isEditingMsg = false;
         bot.sendMessage(msg, "✅ Message updated!");
         showMainMenu(msg);
@@ -444,9 +444,10 @@ void handleNewMessage(TBMessage &msg)
         if(alarmSetter(text))
         {
           bool Pm = false;
-          String formatedTime = formatTime12Hour(AlarmHour , AlarmMins , Pm);
+          const Settings cfg = settings::get();
+          String formatedTime = formatTime12Hour(cfg.alarmHour , cfg.alarmMinute , Pm);
           String checkAlarmSetting = "";
-          if(alarmState == "ON")
+          if(cfg.alarmEnabled)
           {
             if(Pm)
             {
@@ -473,7 +474,7 @@ void handleNewMessage(TBMessage &msg)
         String azanValidation = "";
         if(azanSetter(text))
         {
-          azanValidation = "azan " + prayState;
+          azanValidation = String("azan ") + (settings::get().prayerEnabled ? "ON" : "OFF");
         }
         else
         {
@@ -485,7 +486,7 @@ void handleNewMessage(TBMessage &msg)
       {
         if (volumeSetter(text))
         {
-          String volumeToSend = "volume on " + String(AlarmVolume);
+          String volumeToSend = "volume on " + String(settings::get().volume);
           bot.sendMessage(msg, volumeToSend);
         }
         else 
@@ -570,8 +571,7 @@ void handleNewMessage(TBMessage &msg)
       {
         scrollMessage = text;
         scrolling = text;
-        StoreDataString("LastMessge", scrollMessage);
-        Serial.println(ReadDataString("LastMessge"));
+        settings::setLastMessage(scrollMessage);
         bot.sendMessage(msg, "Message received");
       }
 }

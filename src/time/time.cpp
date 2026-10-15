@@ -11,6 +11,7 @@
 #include <telegram/telegram.h>
 #include <prayerTime/prayerTime.h>
 #include <weather/weather.h>
+#include <settings/settings.h>
 
 #define PRESS_PIN 32
 
@@ -18,8 +19,6 @@ RTC_DS3231 rtc;
 DFRobotDFPlayerMini player;
 
 String timeNow, dateNow;
-int AlarmHour = 0;
-int AlarmMins = 0;
 bool AlarmExit = false;
 
 void handleTimeTask(void *parameter)
@@ -27,6 +26,7 @@ void handleTimeTask(void *parameter)
   for (;;)
   {
     DateTime now = rtc.now();
+    const Settings cfg = settings::get();
     bool isPM;
     String timeString = formatTime12Hour(now.hour(), now.minute(), isPM);
     String displayString = timeString + (isPM ? "." : "");
@@ -35,9 +35,9 @@ void handleTimeTask(void *parameter)
     String weatherStr = "  " + weatherTemp + " " + weatherGlyph;
     String fullDate = dateStr + weatherStr;
 
-    if (alarmState == "ON")
+    if (cfg.alarmEnabled)
     {
-      if(prayState == "ON")
+      if(cfg.prayerEnabled)
       {
         dateNow = fullDate + " \x01" + " \x02";
       }
@@ -48,7 +48,7 @@ void handleTimeTask(void *parameter)
     }
     else
     {
-      if(prayState == "ON")
+      if(cfg.prayerEnabled)
       {
         dateNow = fullDate + " \x02";
       }
@@ -67,11 +67,12 @@ void HandleAlarmTask()
 {
   unsigned long Otime = millis();
   DateTime now = rtc.now();
-  if (now.hour() == AlarmHour && now.minute() == AlarmMins && alarmState == "ON" && AlarmExit == false)
+  const Settings cfg = settings::get();
+  if (now.hour() == cfg.alarmHour && now.minute() == cfg.alarmMinute && cfg.alarmEnabled && AlarmExit == false)
   {
     ringSent = true;
     // player.reset();
-    // player.volume(AlarmVolume);
+    // player.volume(cfg.volume);
     myDisplay.print("ALARM");
     while (true)
     {
@@ -87,7 +88,7 @@ void HandleAlarmTask()
       esp_task_wdt_reset();
     }
   }
-  else if (now.minute() != AlarmMins)
+  else if (now.minute() != cfg.alarmMinute)
   {
     AlarmExit = false;
   }
@@ -104,7 +105,7 @@ void alarmRing(void *parameter)
     if (ringSent == true)
     {
       oldRingTime = millis();
-      player.loop(AlarmMusic);
+      player.loop(settings::get().music);
       ringSent = false;
       ringed = true;
     }
