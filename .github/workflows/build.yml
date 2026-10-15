@@ -1,0 +1,56 @@
+name: Build and test
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio/libdeps
+          key: pio-${{ hashFiles('platformio.ini') }}
+          restore-keys: pio-
+
+      - name: Install PlatformIO
+        run: pip install platformio==6.2.0
+
+      - name: Unit tests (on the build machine, with AddressSanitizer)
+        run: pio test -e native
+
+      - name: Build the firmware
+        run: pio run -e esp32dev
+
+      - name: Checksum
+        run: |
+          cp .pio/build/esp32dev/firmware.bin firmware.bin
+          sha256sum firmware.bin | tee firmware.bin.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: |
+            firmware.bin
+            firmware.bin.sha256
+
+      # A tag like v1.2.0 publishes the firmware and its SHA-256 (the value "update <sha256>" needs).
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            firmware.bin
+            firmware.bin.sha256
