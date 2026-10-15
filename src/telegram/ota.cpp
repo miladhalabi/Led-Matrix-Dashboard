@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <HTTPClient.h>
 #include <Update.h>
+#include <Preferences.h>
 #include <mbedtls/sha256.h>
 #include <esp_task_wdt.h>
 #include <wifi/wifi.h>
@@ -75,6 +76,33 @@ namespace
   }
 }
 
+// The device restarts after every update attempt, so the outcome is kept in flash and the owner is
+// told once Telegram is back (reportOtaResult).
+static void saveOtaResult(const String &result)
+{
+  Preferences prefs;
+  prefs.begin("health", false);
+  prefs.putString("otaResult", result);
+  prefs.end();
+}
+
+void reportOtaResult()
+{
+  Preferences prefs;
+  prefs.begin("health", false);
+  const String result = prefs.getString("otaResult", "");
+  if (result.length() > 0)
+    prefs.putString("otaResult", "");
+  prefs.end();
+
+  const String owner = ownerChatId();
+  if (result.length() == 0 || owner.length() == 0)
+    return;
+  TBMessage target;
+  target.chatId = strtoll(owner.c_str(), nullptr, 10); // ids can be larger than 32 bits
+  bot.sendMessage(target, result);
+}
+
 void rememberFirmware(const String &filePath) { firmwarePath = filePath; }
 
 bool hasFirmware() { return firmwarePath.length() > 0; }
@@ -97,6 +125,8 @@ void startOtaUpdate(TBMessage &msg, const String &expectedSha256)
   {
     url = "https://api.telegram.org/file/bot" + botToken() + "/" + firmwarePath;
   }
+
+  String outcome = "Firmware update failed.";
 
   // Disable watchdog to prevent restart during download
   esp_task_wdt_delete(NULL);
@@ -127,6 +157,7 @@ void startOtaUpdate(TBMessage &msg, const String &expectedSha256)
         if (!streamToFlash(*http.getStreamPtr(), contentLength, actualSha256))
         {
           Serial.println("Download incomplete or flash write failed");
+          outcome = "Firmware update failed: the download was incomplete.";
           Update.abort();
         }
         else if (!actualSha256.equalsIgnoreCase(expectedSha256))
@@ -134,11 +165,13 @@ void startOtaUpdate(TBMessage &msg, const String &expectedSha256)
           Serial.println("Checksum mismatch - update refused");
           Serial.println("  expected " + expectedSha256);
           Serial.println("  received " + actualSha256);
+          outcome = "Firmware update refused: the file does not match the SHA-256 you sent. Nothing was installed.";
           Update.abort();
         }
         else if (Update.end() && Update.isFinished())
         {
           Serial.println("Update complete!");
+          saveOtaResult("Firmware installed. It stays on trial for 2 minutes and rolls back if it crashes.");
           otaProgressText.set("DONE!");
           Serial.println("Restarting...");
           delay(2000);
@@ -148,27 +181,32 @@ void startOtaUpdate(TBMessage &msg, const String &expectedSha256)
         {
           Serial.print("Update failed: ");
           Serial.println(Update.getError());
+          outcome = "Firmware update failed: the new image did not pass verification.";
         }
       }
       else
       {
         Serial.println("Not enough space for OTA");
+        outcome = "Firmware update failed: the file is too large for the update partition.";
       }
     }
     else
     {
       Serial.println("Content length is 0 or unknown");
+      outcome = "Firmware update failed: Telegram did not report the file size.";
     }
   }
   else
   {
     Serial.print("HTTP GET failed: ");
     Serial.println(httpCode);
+    outcome = "Firmware update failed: could not download the file (HTTP " + String(httpCode) + ").";
   }
 
   http.end();
 
   // If we reach here, the update failed - reboot to restore Telegram connection
+  saveOtaResult(outcome);
   Serial.println("OTA failed, rebooting to restore connection...");
   delay(1000);
   ESP.restart();

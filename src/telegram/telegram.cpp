@@ -116,6 +116,7 @@ void handleBotTask(void *parameter)
   if (bot.begin())
   {
     Serial.println("Telegram bot started");
+    reportOtaResult();
   }
   else
   {
