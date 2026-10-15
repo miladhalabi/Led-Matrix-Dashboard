@@ -66,9 +66,8 @@ const uint8_t PROGMEM heart[F_HEART * W_HEART] =
       myDisplay.displayText("", PA_CENTER, 50, PAUSE_TIME, PA_SPRITE);
       myDisplay.setSpriteData(heart, W_HEART, F_HEART, heart, W_HEART, F_HEART);
     }
-    else if (message.startsWith("anim"))
+    else if (message.startsWith("anim") && parseSpriteData(message, customAnim, W_CUSTOM_ANIM, F_CUSTOM_ANIM))
     {
-      parseSpriteData(message, customAnim, W_CUSTOM_ANIM, F_CUSTOM_ANIM);
       myDisplay.displayText("", PA_CENTER, 50, PAUSE_TIME, PA_SPRITE, PA_SPRITE);
       myDisplay.setSpriteData(customAnim, F_CUSTOM_ANIM, W_CUSTOM_ANIM, customAnim, F_CUSTOM_ANIM, W_CUSTOM_ANIM);
     }

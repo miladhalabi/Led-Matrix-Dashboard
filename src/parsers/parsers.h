@@ -4,10 +4,12 @@
 #include <Arduino.h>   // Include Arduino core header to use the String class
 
 String removeStartWord(const String &input , String wordToRemove);
-void parseSpriteData(const String &input, uint8_t *&output, uint8_t &width, uint8_t &frames);
+// Parses "anim,<width>,<frames>,<hex bytes>" into a new array held in `output`.
+// `output` must be nullptr or the result of an earlier call: that array is freed first.
+// Returns false (output = nullptr) if the text is malformed, too short or too long.
+bool parseSpriteData(const String &input, uint8_t *&output, uint8_t &width, uint8_t &frames);
 bool parseTime(String time, int &hour, int &minute, String &isAmPm);
 bool parseDate(String date, int &year, int &month, int &day);
-bool parseTime(String time, int &hour, int &minute , String &AmPm);
 void parseTime24(String time, int &hour, int &minute);
 
 #endif

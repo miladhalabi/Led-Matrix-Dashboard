@@ -9,6 +9,7 @@ String formatTime12Hour(int hour, int minute, bool &isPM);
 String removeStartWord(const String &input, String wordToRemove);
 bool parseTime(String time, int &hour, int &minute, String &isAmPm);
 void parseTime24(String time, int &hour, int &minute);
+bool parseSpriteData(const String &input, uint8_t *&output, uint8_t &width, uint8_t &frames);
 bool parseDate(String date, int &year, int &month, int &day);
 
 void setUp() {}
@@ -118,6 +119,47 @@ void test_parseDate()
   TEST_ASSERT_FALSE(parseDate("999/01/01", y, mo, d));
 }
 
+// ---------------------------------------------------------------- animations
+void test_parseSpriteData_reads_width_frames_and_bytes()
+{
+  uint8_t *data = nullptr;
+  uint8_t width = 0, frames = 0;
+  TEST_ASSERT_TRUE(parseSpriteData("anim,2,2,01,0a 0B,ff", data, width, frames));
+  TEST_ASSERT_EQUAL(2, width);
+  TEST_ASSERT_EQUAL(2, frames);
+  TEST_ASSERT_NOT_NULL(data);
+  TEST_ASSERT_EQUAL_HEX8(0x01, data[0]);
+  TEST_ASSERT_EQUAL_HEX8(0x0A, data[1]);
+  TEST_ASSERT_EQUAL_HEX8(0x0B, data[2]);
+  TEST_ASSERT_EQUAL_HEX8(0xFF, data[3]);
+  delete[] data;
+}
+
+void test_parseSpriteData_replaces_the_previous_animation()
+{
+  uint8_t *data = nullptr;
+  uint8_t width = 0, frames = 0;
+  TEST_ASSERT_TRUE(parseSpriteData("anim,1,1,aa", data, width, frames));
+  TEST_ASSERT_TRUE(parseSpriteData("anim,1,2,bb,cc", data, width, frames)); // frees the first array
+  TEST_ASSERT_EQUAL(2, frames);
+  TEST_ASSERT_EQUAL_HEX8(0xCC, data[1]);
+  delete[] data;
+}
+
+void test_parseSpriteData_rejects_bad_input()
+{
+  uint8_t *data = nullptr;
+  uint8_t width = 0, frames = 0;
+  TEST_ASSERT_FALSE(parseSpriteData("anim,2,2,01,02", data, width, frames));    // too little data
+  TEST_ASSERT_FALSE(parseSpriteData("anim,1,1,zz", data, width, frames));       // not hex
+  TEST_ASSERT_FALSE(parseSpriteData("anim,1,1,a", data, width, frames));        // half a byte
+  TEST_ASSERT_FALSE(parseSpriteData("anim,0,4,00", data, width, frames));       // empty
+  TEST_ASSERT_FALSE(parseSpriteData("anim,255,255,00", data, width, frames));   // too large
+  TEST_ASSERT_FALSE(parseSpriteData("anim,x,2,00", data, width, frames));
+  TEST_ASSERT_FALSE(parseSpriteData("anim", data, width, frames));
+  TEST_ASSERT_NULL(data);
+}
+
 int main(int, char **)
 {
   UNITY_BEGIN();
@@ -130,5 +172,8 @@ int main(int, char **)
   RUN_TEST(test_parseTime_rejects_bad_input);
   RUN_TEST(test_parseTime24);
   RUN_TEST(test_parseDate);
+  RUN_TEST(test_parseSpriteData_reads_width_frames_and_bytes);
+  RUN_TEST(test_parseSpriteData_replaces_the_previous_animation);
+  RUN_TEST(test_parseSpriteData_rejects_bad_input);
   return UNITY_END();
 }

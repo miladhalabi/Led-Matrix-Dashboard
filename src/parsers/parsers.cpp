@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <new>
 
 String removeStartWord(const String &input , String wordToRemove)
 {
@@ -15,44 +16,66 @@ String removeStartWord(const String &input , String wordToRemove)
   return result;
 }
 
-void parseSpriteData(const String &input, uint8_t *&output, uint8_t &width, uint8_t &frames)
+// Longest animation we accept (width x frames bytes). The built-in ones are well under 200.
+static const long MAX_SPRITE_BYTES = 512;
+
+static int hexValue(char c)
 {
-  String cleanedInput = removeStartWord(input , "anim");
-  const char *ptr = cleanedInput.c_str();
-  width = strtol(ptr, (char **)&ptr, 10);
-  ptr++;
-  frames = strtol(ptr, (char **)&ptr, 10);
-  ptr++;
+  if (c >= '0' && c <= '9')
+    return c - '0';
+  if (c >= 'a' && c <= 'f')
+    return c - 'a' + 10;
+  if (c >= 'A' && c <= 'F')
+    return c - 'A' + 10;
+  return -1;
+}
 
-  size_t outputSize = width * frames;
-  output = new uint8_t[outputSize];
+bool parseSpriteData(const String &input, uint8_t *&output, uint8_t &width, uint8_t &frames)
+{
+  delete[] output; // the previous animation; without this every call leaked its buffer
+  output = nullptr;
 
-  for (size_t i = 0; i < outputSize; i++)
+  const String text = removeStartWord(input, "anim");
+  const char *ptr = text.c_str();
+  char *end = nullptr;
+
+  const long newWidth = strtol(ptr, &end, 10);
+  if (end == ptr || (*end != ',' && *end != ' '))
+    return false;
+  ptr = end + 1;
+
+  const long newFrames = strtol(ptr, &end, 10);
+  if (end == ptr || (*end != ',' && *end != ' '))
+    return false;
+  ptr = end + 1;
+
+  if (newWidth < 1 || newFrames < 1 || newWidth * newFrames > MAX_SPRITE_BYTES)
+    return false;
+
+  const size_t size = (size_t)(newWidth * newFrames);
+  uint8_t *data = new (std::nothrow) uint8_t[size];
+  if (!data)
+    return false;
+
+  for (size_t i = 0; i < size; i++)
   {
     while (*ptr == ' ' || *ptr == ',')
-    {
       ptr++;
-    }
-    uint8_t value = 0;
-    for (int j = 0; j < 2; j++)
+    const int high = hexValue(ptr[0]);
+    const int low = high < 0 ? -1 : hexValue(ptr[1]); // never reads past the end of the text
+    if (high < 0 || low < 0)
     {
-      char c = *ptr++;
-      value <<= 4;
-      if (c >= '0' && c <= '9')
-      {
-        value |= (c - '0');
-      }
-      else if (c >= 'a' && c <= 'f')
-      {
-        value |= (c - 'a' + 10);
-      }
-      else if (c >= 'A' && c <= 'F')
-      {
-        value |= (c - 'A' + 10);
-      }
+      delete[] data; // malformed or too short
+      return false;
     }
-    output[i] = value;
+    data[i] = (uint8_t)((high << 4) | low);
+    ptr += 2;
   }
+
+  output = data;
+  width = (uint8_t)newWidth;
+  frames = (uint8_t)newFrames;
+  return true;
 }
 
 bool parseTime(String time, int &hour, int &minute, String &isAmPm)
