@@ -53,7 +53,7 @@ void setup()
   Serial2.begin(9600);
   Serial.println("===================UPDATED===================");
   healthInit();
-  prepareDeviceIdentity();
+  prepareDeviceIdentity(PRESS_PIN);
 
   pinMode(ENCODER_PIN_A, INPUT_PULLUP);
   pinMode(ENCODER_PIN_B, INPUT_PULLUP);

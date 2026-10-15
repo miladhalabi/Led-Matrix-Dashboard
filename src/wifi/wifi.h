@@ -15,10 +15,10 @@ void handleRoot();
 
 // This device's own WiFi name and first-time setup password. The password is random, made once
 // and kept in flash, so there is no default that every device shares. Call first thing in setup().
-void prepareDeviceIdentity();
+void prepareDeviceIdentity(int rescuePin); // holding the button on `rescuePin` while powering on forces setup mode
 const char *setupWifiName();
 const char *setupWifiPassword();
-bool waitingForFirstSetup(); // true until WiFi has been configured in the portal
+bool waitingForFirstSetup(); // true until WiFi is configured, or after a rescue start, until it is online
 
 // Telegram credentials, entered in the IotWebConf config page (never hardcoded).
 void setupTelegramConfig(); // call before iotWebConf.init()

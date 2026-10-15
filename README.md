@@ -101,6 +101,8 @@ The owner can add other users with `add,<chat id>`. Only the owner can add or re
 3. Enter your home WiFi, choose **your own hotspot password** (this is also the password for the config page later, user `admin`), and fill in the Telegram **bot token** and **owner chat ID**.
 4. Save. The device restarts and connects. To change anything later, open `http://<device name or IP>/config`.
 
+**Forgot the hotspot password you chose?** Hold the encoder button while you plug the device in. It starts the setup hotspot again with its own setup password, which the matrix scrolls (and the serial monitor prints). Your saved settings stay until you change them.
+
 ### Telegram Dashboard
 Send `/start` to your bot to open the **Live Dashboard**.
 *   **📝 Msg**: Send a text message to scroll it on the matrix.

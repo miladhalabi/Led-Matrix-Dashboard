@@ -13,11 +13,18 @@ WebServer server(80);
 // IotWebConf keeps these pointers, so the text is filled in by prepareDeviceIdentity() before init().
 static char deviceName[24] = "LedMatrix";
 static char setupPassword[12] = "";
+static bool rescueStart = false;
 
 IotWebConf iotWebConf(deviceName, &dnsServer, &server, setupPassword, CONFIG_VERSION);
 
-void prepareDeviceIdentity()
+void prepareDeviceIdentity(int rescuePin)
 {
+  // Button held while powering on: IotWebConf then starts the setup hotspot with the setup password
+  // (the way back in if the password chosen during setup is forgotten).
+  pinMode(rescuePin, INPUT_PULLUP);
+  rescueStart = digitalRead(rescuePin) == LOW;
+  iotWebConf.setConfigPin(rescuePin);
+
   // "LedMatrix-A1B2": the last two bytes of the chip's MAC address, to tell devices apart
   const uint64_t mac = ESP.getEfuseMac();
   snprintf(deviceName, sizeof(deviceName), "LedMatrix-%02X%02X", (unsigned)((mac >> 40) & 0xFF), (unsigned)((mac >> 32) & 0xFF));
@@ -41,7 +48,13 @@ void prepareDeviceIdentity()
 
 const char *setupWifiName() { return deviceName; }
 const char *setupWifiPassword() { return setupPassword; }
-bool waitingForFirstSetup() { return iotWebConf.getState() == iotwebconf::NotConfigured; }
+bool waitingForFirstSetup()
+{
+  const iotwebconf::NetworkState state = iotWebConf.getState();
+  if (state == iotwebconf::OnLine)
+    rescueStart = false;
+  return state == iotwebconf::NotConfigured || rescueStart;
+}
 
 static char botTokenValue[64];
 static char ownerChatIdValue[24];
