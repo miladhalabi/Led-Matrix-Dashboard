@@ -18,6 +18,8 @@ bool fetchWeather() {
         String url = "http://api.open-meteo.com/v1/forecast?latitude=33.5138&longitude=36.2765&current=temperature_2m,weather_code,is_day";
         
         http.begin(url);
+        http.setConnectTimeout(5000);
+        http.setTimeout(5000);
         int httpResponseCode = http.GET();
         
         Serial.print("Weather HTTP Code: ");

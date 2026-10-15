@@ -29,6 +29,8 @@ bool prayerTimeFetch(int year, int month, int day)
   {
     HTTPClient http;
     http.begin(serverName.c_str());
+    http.setConnectTimeout(5000);
+    http.setTimeout(5000);
 
     // Perform the HTTP GET request
     int httpResponseCode = http.GET();
