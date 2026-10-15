@@ -84,17 +84,12 @@ The project automatically manages dependencies via `platformio.ini`:
 *   `DFRobotDFPlayerMini` (Audio)
 
 ### 3. Telegram Bot Configuration
-1. Message [@BotFather](https://t.me/botfather) on Telegram to create a new bot.
-2. Copy your **API Token**.
-3. Open `src/telegram/telegram.cpp` and replace:
-   ```cpp
-   #define BOT_TOKEN "YOUR_TOKEN_HERE"
-   ```
-4. Message [@IDBot](https://t.me/myidbot) to get your personal **Chat ID**.
-5. Replace in `src/telegram/telegram.cpp`:
-   ```cpp
-   #define CHAT_ID "YOUR_ID_HERE"
-   ```
+The bot token and your chat ID are **not stored in the code**. You enter them in the device's config page:
+1. Message [@BotFather](https://t.me/botfather), create a bot, and copy its **API Token**.
+2. Message [@IDBot](https://t.me/myidbot) to get your personal **Chat ID**.
+3. Flash the firmware, join the device's WiFi (see *Initial WiFi Setup* below) and fill in **Bot token** and **Owner chat ID** on the same page as the WiFi settings. Leave the token field empty later to keep the saved one.
+
+The owner can add other users with `add,<chat id>`. Only the owner can add or remove users and update the firmware.
 
 ---
 
@@ -134,21 +129,56 @@ The device features a complete on-device menu system for offline configuration.
 *   `Exit`: Return to the main display.
 
 ### Remote OTA Update
-1. Build your project in PlatformIO.
-2. Send the resulting `.bin` file as a **Document** to your Telegram bot.
-3. The bot will recognize the file. Type **`update`** to confirm.
-4. The matrix will scroll **"UPDATING..."** and reboot once finished.
+Only the owner can do this.
+1. Build your project (`pio run`) and compute the checksum of `.pio/build/esp32dev/firmware.bin`: `sha256sum firmware.bin`.
+2. Send the `.bin` to the bot as a **Document**.
+3. Send `update <sha256>` with the checksum from step 1. The device refuses the file if the checksum differs.
+4. The matrix scrolls **"UPDATING..."** and the device restarts. The bot then tells you how the update ended.
+5. The new firmware is on trial for 2 minutes. If it crashes or loses power in that time, the device goes back to the previous firmware by itself.
+
+Tagged releases (`v*`) on GitHub publish `firmware.bin` together with its `firmware.bin.sha256`.
+
+> The partition layout in `platformio.ini` (two 1.875 MB firmware slots) only takes effect after **one wired upload** (`pio run -t upload`); saved settings are kept.
 
 ---
 
 ## 📂 Project Structure
 
-*   `src/display/`: Animation logic and font management.
-*   `src/telegram/`: Bot logic, keyboards, and OTA handler.
-*   `src/weather/`: Open-Meteo API integration.
-*   `src/prayerTime/`: Aladhan API fetching and scheduling.
-*   `src/time/`: RTC management and alarm triggering.
-*   `src/encoder/`: Local menu navigation logic.
+| Folder | What it does |
+| :--- | :--- |
+| `src/settings/` | Every saved setting (alarm, volume, brightness, ...). One struct, thread-safe getters and validated setters. |
+| `src/telegram/` | `telegram.cpp` (bot task, who may talk to it), `commands.cpp` (text commands), `menus.cpp` (inline keyboards), `ota.cpp` (firmware update). |
+| `src/display/` | `display.cpp` (render loop) and `pages.cpp` (the screens that rotate: message, date). |
+| `src/time/`, `src/rtcClock/` | Clock text and alarm; locked access to the RTC chip. |
+| `src/prayerTime/`, `src/weather/` | Aladhan and Open-Meteo fetchers. |
+| `src/encoder/` | The local menu. |
+| `src/health/` | Memory and stack logging, safe restarts, firmware rollback confirmation. |
+| `src/wifi/` | WiFi portal and the Telegram fields in it. |
+| `src/shared/`, `src/textUtils/` | Small helpers. |
+| `test/` | Unit tests that run on the PC. |
+
+---
+
+## 🧪 Development
+
+```bash
+pio test -e native     # unit tests on the PC (with AddressSanitizer), no hardware needed
+pio run                # build the firmware
+pio run -t upload      # flash over USB
+pio device monitor     # serial log
+```
+
+GitHub Actions runs the tests and the build on every push and pull request.
+
+**Adding a feature**
+- *A Telegram command:* write a handler in `src/telegram/commands.cpp` and add a line to `COMMANDS`.
+- *A Telegram button:* add a handler in `src/telegram/menus.cpp` and a line to `CALLBACKS`.
+- *A rotating screen:* write a show function in `src/display/pages.cpp` and add a line to `PAGES`.
+- *A saved setting:* add a field to `Settings` and a setter in `src/settings/`.
+- *A background task:* write the task function and add a line to `TASKS` in `src/main.cpp`.
+
+**Reading the serial log**
+The `Health:` lines show free memory, the largest free block and, every 5 minutes, the lowest free stack of each task. The first lines after boot say why the device last restarted. Memory that keeps shrinking means a leak; a stack that gets close to 0 needs a bigger size in `TASKS`.
 
 ---
 
