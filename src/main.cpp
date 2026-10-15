@@ -16,13 +16,6 @@
 #include <rtcClock/rtcClock.h>
 #include <health/health.h>
 
-TaskHandle_t TaskEncoderHandle = NULL;
-TaskHandle_t TaskDisplayHandle = NULL;
-TaskHandle_t TaskBotHandle = NULL;
-TaskHandle_t TaskTimeHandle = NULL;
-TaskHandle_t TaskPrayHandle = NULL;
-TaskHandle_t TaskSendBotHandle = NULL;
-
 bool ledState = LOW;
 String heartString = "heart";
 
@@ -31,6 +24,28 @@ String heartString = "heart";
 #define PRESS_PIN 32
 #define ENCODER_PIN_A 33
 #define ENCODER_PIN_B 25
+
+// Every background task. To add a service: write its task function and add a line here.
+struct TaskSpec
+{
+  TaskFunction_t function;
+  const char *name;
+  uint32_t stackBytes;
+  BaseType_t core; // 0 = with the WiFi stack, 1 = with the Arduino loop
+  bool watchdog;   // must call esp_task_wdt_reset() within WATCHDOG_TIMEOUT seconds
+};
+
+// Network work (Telegram TLS, HTTP fetches) runs on core 0 so it cannot stall the display on core 1.
+// Stack sizes: the health task logs each task's lowest free stack, so trim them from that log.
+static const TaskSpec TASKS[] = {
+    {handleEncoderTask, "Encoder", 4096, 1, true},
+    {handleDisplayTask, "Display", 20000, 1, true},
+    {handleTimeTask, "Time", 8192, 1, true},
+    {alarmRing, "AlarmRing", 4096, 1, false},
+    {handleBotTask, "Bot", 20000, 0, false},
+    {isPrayTime, "Prayer", 8192, 0, false},
+    {healthTask, "Health", 4096, 0, false},
+};
 
 void setup()
 {
@@ -106,23 +121,19 @@ void setup()
   esp_task_wdt_init(WATCHDOG_TIMEOUT, true); // Enable panic so ESP32 restarts
   esp_task_wdt_add(NULL);                    // Add the main loop task to the watchdog
 
-  xTaskCreatePinnedToCore(handleEncoderTask, "EncoderTask", 20000, NULL, 1, &TaskEncoderHandle, 1);
-  xTaskCreatePinnedToCore(handleDisplayTask, "DisplayTask", 20000, NULL, 1, &TaskDisplayHandle, 1);
-  xTaskCreatePinnedToCore(handleBotTask, "BotTask", 20000, NULL, 1, NULL, 1);
-  xTaskCreatePinnedToCore(handleTimeTask, "TimeTask", 8192, NULL, 1, &TaskTimeHandle, 1);
-  xTaskCreatePinnedToCore(healthTask, "HealthTask", 4096, NULL, 1, NULL, 1);
-  xTaskCreatePinnedToCore(alarmRing, "alarmRingTask", 4096, NULL, 1, NULL, 1);
-  xTaskCreatePinnedToCore(isPrayTime, "isPrayTime", 4096, NULL, 1, &TaskPrayHandle, 1);
-
-  esp_task_wdt_add(TaskEncoderHandle);
-  esp_task_wdt_add(TaskDisplayHandle);
-  esp_task_wdt_add(TaskTimeHandle);
-
-  healthWatchTask("Encoder", TaskEncoderHandle);
-  healthWatchTask("Display", TaskDisplayHandle);
-  healthWatchTask("Time", TaskTimeHandle);
-  healthWatchTask("Prayer", TaskPrayHandle);
-  // esp_task_wdt_add(TaskPrayHandle);
+  for (const TaskSpec &task : TASKS)
+  {
+    TaskHandle_t handle = NULL;
+    xTaskCreatePinnedToCore(task.function, task.name, task.stackBytes, NULL, 1, &handle, task.core);
+    if (handle == NULL)
+    {
+      Serial.printf("Could not start task %s\n", task.name);
+      continue;
+    }
+    if (task.watchdog)
+      esp_task_wdt_add(handle);
+    healthWatchTask(task.name, handle);
+  }
 }
 
 void loop()
