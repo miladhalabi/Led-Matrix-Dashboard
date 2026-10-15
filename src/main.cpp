@@ -50,6 +50,7 @@ void setup()
   encoder.attachSingleEdge(ENCODER_PIN_A, ENCODER_PIN_B);
   encoder.clearCount();
 
+  setupTelegramConfig();
   iotWebConf.init();
 
   server.on("/", handleRoot);

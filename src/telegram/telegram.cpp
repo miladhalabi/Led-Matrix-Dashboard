@@ -17,8 +17,6 @@
 #include <Update.h>
 #include <display/display.h>
 
-#define BOT_TOKEN "8638569625:AAF81cLSgBvPPXOc6Yphx2eWlByATaUZgsg"
-#define CHAT_ID "818675367"
 #define BOT_REQUEST_DELAY 1000
 
 // Callback constants for button identification
@@ -72,7 +70,7 @@ void handleOTAUpdate(TBMessage &msg, const String &filePath) {
     if (filePath.startsWith("https://")) {
         url = filePath;
     } else {
-        url = "https://api.telegram.org/file/bot" + String(BOT_TOKEN) + "/" + filePath;
+        url = "https://api.telegram.org/file/bot" + botToken() + "/" + filePath;
     }
     
     Serial.println("OTA URL: " + url);
@@ -260,19 +258,14 @@ void handleNewMessage(TBMessage &msg)
     String chat_id = String(msg.chatId);
     String text = msg.text;
     
-    String ChatUser = "818675367";
-    for(int j = 0 ; j < ChatIDs->length() ; j++)
+    // Only the owner (set in the config portal) and users added with "add,<id>" may use the bot.
+    String owner = ownerChatId();
+    bool allowed = owner.length() > 0 && chat_id == owner;
+    for (int j = 0; j < ChatIDsLength && !allowed; j++)
     {
-      if(ChatIDs[j] != "")
-      {
-        if(chat_id == ChatIDs[j])
-        {
-          ChatUser = ChatIDs[j];
-        }
-      }
+      allowed = ChatIDs[j] != "" && chat_id == ChatIDs[j];
     }
-
-    if (chat_id != ChatUser) return;
+    if (!allowed) return;
 
     // Handle document uploads (.bin firmware files)
     if (msg.messageType == MessageDocument && msg.document.file_exists) {
@@ -586,12 +579,12 @@ void handleNewMessage(TBMessage &msg)
 void handleBotTask(void *parameter)
 {
   bot.setUpdateTime(BOT_REQUEST_DELAY);
-  bot.setTelegramToken(BOT_TOKEN);
-  
-  // Wait for WiFi connection
-  while (WiFi.status() != WL_CONNECTED) {
+
+  // Wait for WiFi and for a token to be entered in the config portal
+  while (WiFi.status() != WL_CONNECTED || botToken().length() == 0) {
     vTaskDelay(1000 / portTICK_PERIOD_MS);
   }
+  bot.setTelegramToken(botTokenRaw());
 
   Serial.println("Telegram bot starting...");
   if (bot.begin()) {

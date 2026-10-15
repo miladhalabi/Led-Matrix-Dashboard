@@ -9,7 +9,29 @@
 WiFiClientSecure client;
 DNSServer dnsServer;
 WebServer server(80);
-IotWebConf iotWebConf(THING_NAME, &dnsServer, &server, WIFI_INITIAL_AP_PASSWORD);
+// Bump when the stored parameter layout changes: the portal then asks for all values again.
+#define CONFIG_VERSION "tg1"
+
+IotWebConf iotWebConf(THING_NAME, &dnsServer, &server, WIFI_INITIAL_AP_PASSWORD, CONFIG_VERSION);
+
+static char botTokenValue[64];
+static char ownerChatIdValue[24];
+static iotwebconf::ParameterGroup telegramGroup = iotwebconf::ParameterGroup("telegram", "Telegram");
+// Password parameter: the saved token is never shown again, and leaving the field empty keeps it.
+// Telegram tokens are ~46 chars, so IOTWEBCONF_PASSWORD_LEN is raised in platformio.ini.
+static iotwebconf::PasswordParameter botTokenParam = iotwebconf::PasswordParameter("Bot token", "botToken", botTokenValue, sizeof(botTokenValue), nullptr, "123456:ABC...");
+static iotwebconf::TextParameter ownerChatIdParam = iotwebconf::TextParameter("Owner chat ID", "ownerChatId", ownerChatIdValue, sizeof(ownerChatIdValue), nullptr, "e.g. 123456789");
+
+void setupTelegramConfig()
+{
+  telegramGroup.addItem(&botTokenParam);
+  telegramGroup.addItem(&ownerChatIdParam);
+  iotWebConf.addParameterGroup(&telegramGroup);
+}
+
+String botToken() { return String(botTokenValue); }
+String ownerChatId() { return String(ownerChatIdValue); }
+const char* botTokenRaw() { return botTokenValue; }
 
 void handleRoot()
 {

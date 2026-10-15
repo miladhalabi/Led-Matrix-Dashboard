@@ -2,8 +2,8 @@
 #include <flashUtils/flashUtils.h>
 #include <parsers/parsers.h>
 
-const int ChatIDsLength = 10;
-String ChatIDs[ChatIDsLength] = {"818675367"};
+extern const int ChatIDsLength = 10; // extern: a plain const has internal linkage in C++
+String ChatIDs[ChatIDsLength];
 
 bool addUser(String users[] , int len , String newusesr)
 {

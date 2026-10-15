@@ -16,4 +16,10 @@ extern IotWebConf iotWebConf;
 
 void handleRoot();
 
+// Telegram credentials, entered in the IotWebConf config page (never hardcoded).
+void setupTelegramConfig(); // call before iotWebConf.init()
+String botToken();
+String ownerChatId();
+const char* botTokenRaw(); // stable pointer; AsyncTelegram2 keeps it instead of copying
+
 #endif // _WIFI_H
