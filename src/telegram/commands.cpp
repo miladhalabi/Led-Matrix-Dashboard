@@ -59,12 +59,35 @@ namespace
     return true;
   }
 
-  bool cmdUpdate(TBMessage &msg, const String &)
+  // True for exactly 64 hex digits.
+  bool isSha256(const String &text)
   {
-    if (hasFirmware())
-      startOtaUpdate(msg);
-    else
+    if (text.length() != 64)
+      return false;
+    for (unsigned int i = 0; i < text.length(); i++)
+    {
+      if (!isxdigit(text[i]))
+        return false;
+    }
+    return true;
+  }
+
+  // "update <sha256 of the .bin>" - the hash is how the device knows it got the file you meant.
+  bool cmdUpdate(TBMessage &msg, const String &text)
+  {
+    if (!hasFirmware())
+    {
       reply(msg, "No firmware file received yet. Send a .bin file first.");
+      return true;
+    }
+    String hash = text.substring(6);
+    hash.trim();
+    if (!isSha256(hash))
+    {
+      reply(msg, "To confirm, send:\nupdate <sha256 of the file>\n\nOn your computer: sha256sum firmware.bin");
+      return true;
+    }
+    startOtaUpdate(msg, hash);
     return true;
   }
 

@@ -56,7 +56,7 @@ static void handleDocument(TBMessage &msg)
   String info = "Firmware file received!\n";
   info += "File: " + String(msg.document.file_name) + "\n";
   info += "Size: " + String(msg.document.file_size) + " bytes\n\n";
-  info += "Type 'update' to start the firmware update.";
+  info += "To install it, send:\nupdate <sha256 of the file>\n(on your computer: sha256sum firmware.bin)";
   bot.sendMessage(msg, info);
 }
 

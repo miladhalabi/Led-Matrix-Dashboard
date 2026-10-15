@@ -24,6 +24,6 @@ bool takeAwaitingMessage(); // true once after the user pressed the "Msg" button
 // ota.cpp - firmware update from a .bin sent to the bot.
 void rememberFirmware(const String &filePath);
 bool hasFirmware();
-void startOtaUpdate(TBMessage &msg);
+void startOtaUpdate(TBMessage &msg, const String &expectedSha256); // refuses a file with a different SHA-256
 
 #endif

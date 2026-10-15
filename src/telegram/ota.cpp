@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <HTTPClient.h>
 #include <Update.h>
+#include <mbedtls/sha256.h>
 #include <esp_task_wdt.h>
 #include <wifi/wifi.h>
 #include <telegram/telegram.h>
@@ -13,13 +14,72 @@ SharedString otaProgressText;
 namespace
 {
   String firmwarePath; // Telegram file path of the last .bin the owner sent
+
+  String toHex(const uint8_t *bytes, size_t length)
+  {
+    static const char digits[] = "0123456789abcdef";
+    String hex;
+    hex.reserve(length * 2);
+    for (size_t i = 0; i < length; i++)
+    {
+      hex += digits[bytes[i] >> 4];
+      hex += digits[bytes[i] & 0x0F];
+    }
+    return hex;
+  }
+
+  // Copies `total` bytes of firmware from the download into the update partition, hashing them on the
+  // way. Returns false if the download stalls or flash writing fails.
+  bool streamToFlash(Stream &stream, size_t total, String &sha256Hex)
+  {
+    mbedtls_sha256_context hash;
+    mbedtls_sha256_init(&hash);
+    mbedtls_sha256_starts_ret(&hash, 0);
+
+    uint8_t buffer[1024];
+    size_t done = 0;
+    unsigned long lastData = millis();
+    bool ok = true;
+    while (done < total)
+    {
+      const size_t waiting = stream.available();
+      if (waiting == 0)
+      {
+        if (millis() - lastData > 15000)
+        {
+          ok = false; // the download stalled
+          break;
+        }
+        delay(1);
+        continue;
+      }
+      const size_t want = min(min(waiting, sizeof(buffer)), total - done);
+      const size_t got = stream.readBytes(buffer, want);
+      if (got == 0)
+        continue;
+      lastData = millis();
+      if (Update.write(buffer, got) != got)
+      {
+        ok = false;
+        break;
+      }
+      mbedtls_sha256_update_ret(&hash, buffer, got);
+      done += got;
+    }
+
+    uint8_t digest[32];
+    mbedtls_sha256_finish_ret(&hash, digest);
+    mbedtls_sha256_free(&hash);
+    sha256Hex = toHex(digest, sizeof(digest));
+    return ok && done == total;
+  }
 }
 
 void rememberFirmware(const String &filePath) { firmwarePath = filePath; }
 
 bool hasFirmware() { return firmwarePath.length() > 0; }
 
-void startOtaUpdate(TBMessage &msg)
+void startOtaUpdate(TBMessage &msg, const String &expectedSha256)
 {
   bot.sendMessage(msg, "Starting firmware update from Telegram file...");
 
@@ -60,36 +120,34 @@ void startOtaUpdate(TBMessage &msg)
 
     if (contentLength > 0)
     {
-      WiFiClient *stream = http.getStreamPtr();
-
       if (Update.begin(contentLength))
       {
         Serial.println("Writing firmware to flash...");
-        size_t written = Update.writeStream(*stream);
-
-        if (written == (size_t)contentLength)
+        String actualSha256;
+        if (!streamToFlash(*http.getStreamPtr(), contentLength, actualSha256))
         {
-          Serial.println("Firmware written successfully!");
-          if (Update.end())
-          {
-            Serial.println("Update complete!");
-            if (Update.isFinished())
-            {
-              otaProgressText.set("DONE!");
-              Serial.println("Restarting...");
-              delay(2000);
-              ESP.restart();
-            }
-          }
-          else
-          {
-            Serial.print("Update failed: ");
-            Serial.println(Update.getError());
-          }
+          Serial.println("Download incomplete or flash write failed");
+          Update.abort();
+        }
+        else if (!actualSha256.equalsIgnoreCase(expectedSha256))
+        {
+          Serial.println("Checksum mismatch - update refused");
+          Serial.println("  expected " + expectedSha256);
+          Serial.println("  received " + actualSha256);
+          Update.abort();
+        }
+        else if (Update.end() && Update.isFinished())
+        {
+          Serial.println("Update complete!");
+          otaProgressText.set("DONE!");
+          Serial.println("Restarting...");
+          delay(2000);
+          ESP.restart();
         }
         else
         {
-          Serial.println("Written bytes mismatch!");
+          Serial.print("Update failed: ");
+          Serial.println(Update.getError());
         }
       }
       else
