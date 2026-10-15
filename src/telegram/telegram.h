@@ -3,11 +3,12 @@
 
 #include <Arduino.h>   // Include Arduino core header to use the String class
 #include <AsyncTelegram2.h>
+#include <shared/shared_string.h>
 
 extern bool ringSent;
-extern String scrolling;
+extern SharedString scrolling;
 extern volatile bool isOTAUpdating;
-extern String otaProgressText;
+extern SharedString otaProgressText;
 
 void handleNewMessage(TBMessage &msg);
 void handleBotTask(void *parameter);

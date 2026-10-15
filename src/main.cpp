@@ -87,9 +87,7 @@ void setup()
   myDisplay.addChar(5, rainGlyph);
   myDisplay.addChar(6, moonGlyph);
 
-  scrolling = settings::lastMessage();
-
-  Serial.println(scrolling.c_str());
+  scrolling.set(settings::lastMessage());
 
   // loadStringArray("prayTimeArray", prayTimeArray, 5);
 

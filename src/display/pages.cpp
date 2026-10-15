@@ -15,6 +15,17 @@ namespace
 {
   const uint16_t PAUSE_TIME = 1000; // in milliseconds
 
+  // Parola keeps the pointer it is given for as long as it animates, so the text it shows
+  // lives in buffers of our own (a temporary String would be gone by then).
+  char messageText[512];
+  char dateText[128];
+
+  const char *hold(char *buffer, size_t size, const String &text)
+  {
+    strlcpy(buffer, text.c_str(), size);
+    return buffer;
+  }
+
 const uint8_t F_PMAN1 = 6;
 const uint8_t W_PMAN1 = 8;
 const uint8_t PROGMEM pacman1[F_PMAN1 * W_PMAN1] = // gobbling pacman animation
@@ -44,32 +55,33 @@ const uint8_t PROGMEM heart[F_HEART * W_HEART] =
   // The user's text, or one of the built-in animations when the text is "pacman", "heart" or "anim...".
   void showMessagePage()
   {
-    if (scrolling == "pacman")
+    const String message = scrolling.get();
+    if (message == "pacman")
     {
       myDisplay.displayText("", PA_CENTER, 50, PAUSE_TIME, PA_SPRITE, PA_SPRITE);
       myDisplay.setSpriteData(pacman1, W_PMAN1, F_PMAN1, pacman2, W_PMAN2, F_PMAN2);
     }
-    else if (scrolling == "heart")
+    else if (message == "heart")
     {
       myDisplay.displayText("", PA_CENTER, 50, PAUSE_TIME, PA_SPRITE);
       myDisplay.setSpriteData(heart, W_HEART, F_HEART, heart, W_HEART, F_HEART);
     }
-    else if (scrolling.startsWith("anim"))
+    else if (message.startsWith("anim"))
     {
-      parseSpriteData(scrolling, customAnim, W_CUSTOM_ANIM, F_CUSTOM_ANIM);
+      parseSpriteData(message, customAnim, W_CUSTOM_ANIM, F_CUSTOM_ANIM);
       myDisplay.displayText("", PA_CENTER, 50, PAUSE_TIME, PA_SPRITE, PA_SPRITE);
       myDisplay.setSpriteData(customAnim, F_CUSTOM_ANIM, W_CUSTOM_ANIM, customAnim, F_CUSTOM_ANIM, W_CUSTOM_ANIM);
     }
     else
     {
-      myDisplay.displayScroll(scrolling.c_str(), PA_CENTER, PA_SCROLL_LEFT, 50);
+      myDisplay.displayScroll(hold(messageText, sizeof(messageText), message), PA_CENTER, PA_SCROLL_LEFT, 50);
     }
   }
 
   // "2026/10/15  24° <weather glyph> <alarm / azan icons>"
   void showDatePage()
   {
-    myDisplay.displayScroll(dateNow.c_str(), PA_CENTER, PA_SCROLL_LEFT, 50);
+    myDisplay.displayScroll(hold(dateText, sizeof(dateText), dateNow.get()), PA_CENTER, PA_SCROLL_LEFT, 50);
   }
 
   const Page PAGES[] = {

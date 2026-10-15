@@ -18,7 +18,8 @@
 
 DFRobotDFPlayerMini player;
 
-String timeNow, dateNow;
+SharedString timeNow;
+SharedString dateNow;
 bool AlarmExit = false;
 
 void handleTimeTask(void *parameter)
@@ -32,32 +33,16 @@ void handleTimeTask(void *parameter)
     String displayString = timeString + (isPM ? "." : "");
 
     String dateStr = String(now.year()) + "/" + String(now.month()) + "/" + String(now.day());
-    String weatherStr = "  " + weatherTemp + " " + weatherGlyph;
-    String fullDate = dateStr + weatherStr;
+    String fullDate = dateStr + "  " + weatherTemp.get() + " " + weatherGlyph.get();
 
+    // icons for "alarm is on" (\x01) and "azan is on" (\x02)
+    String icons = "";
     if (cfg.alarmEnabled)
-    {
-      if(cfg.prayerEnabled)
-      {
-        dateNow = fullDate + " \x01" + " \x02";
-      }
-      else
-      {
-        dateNow = fullDate + " \x01";
-      }
-    }
-    else
-    {
-      if(cfg.prayerEnabled)
-      {
-        dateNow = fullDate + " \x02";
-      }
-      else
-      {
-        dateNow = fullDate;
-      }
-    }
-    timeNow = displayString;
+      icons += " \x01";
+    if (cfg.prayerEnabled)
+      icons += " \x02";
+    dateNow.set(fullDate + icons);
+    timeNow.set(displayString);
     esp_task_wdt_reset();                  // Reset the watchdog timer
     vTaskDelay(1000 / portTICK_PERIOD_MS); // Update every 1 second
   }

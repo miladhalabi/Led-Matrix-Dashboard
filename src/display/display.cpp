@@ -16,6 +16,9 @@ MD_Parola myDisplay = MD_Parola(HARDWARE_TYPE, CS_PIN, MAX_DEVICES);
 
 unsigned long lastPageTime = 0;
 const unsigned long PAGE_INTERVAL_MS = 10000; // the clock is shown in between pages
+// Parola keeps the pointer it is given while it animates, so the text lives in buffers of our own.
+static char clockText[32];
+static char otaText[32];
 uint8_t customChar[] = { 0x07, 0x40, 0x7C, 0x42, 0xC3, 0x42, 0x7C, 0x40 };
 uint8_t customChar1[] = {0x08 , 0x0E,0x11,0x21,0x42,0x42,0x21,0x11,0x0E};
 uint8_t sunGlyph[] = {0x08, 0x81,0x5A,0x24,0x42,0x42,0x24,0x5A,0x81};
@@ -29,7 +32,8 @@ void handleDisplayTask(void *parameter)
     // If OTA update is in progress, show the OTA status text instead of normal display
     if (isOTAUpdating) {
       if (myDisplay.displayAnimate()) {
-        myDisplay.displayScroll(otaProgressText.c_str(), PA_CENTER, PA_SCROLL_LEFT, 50);
+        strlcpy(otaText, otaProgressText.get().c_str(), sizeof(otaText));
+        myDisplay.displayScroll(otaText, PA_CENTER, PA_SCROLL_LEFT, 50);
       }
       esp_task_wdt_reset();
       vTaskDelay(10 / portTICK_PERIOD_MS);
@@ -51,7 +55,8 @@ void handleDisplayTask(void *parameter)
       delay(5);
       if (myDisplay.displayAnimate())
       {
-        myDisplay.displayText(timeNow.c_str(), PA_CENTER, myDisplay.getSpeed(), 10000, PA_SCROLL_DOWN, PA_SCROLL_DOWN);
+        strlcpy(clockText, timeNow.get().c_str(), sizeof(clockText));
+        myDisplay.displayText(clockText, PA_CENTER, myDisplay.getSpeed(), 10000, PA_SCROLL_DOWN, PA_SCROLL_DOWN);
         delay(100);
         myDisplay.displayReset();
       }

@@ -2,9 +2,10 @@
 #define WEATHER_H
 
 #include <Arduino.h>
+#include <shared/shared_string.h>
 
-extern String weatherTemp;
-extern String weatherGlyph;
+extern SharedString weatherTemp;
+extern SharedString weatherGlyph;
 
 bool fetchWeather();
 

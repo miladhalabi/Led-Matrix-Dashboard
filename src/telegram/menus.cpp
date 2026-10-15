@@ -289,11 +289,11 @@ void showMainMenu(TBMessage &msg, bool edit)
 
   String status = "🏠 *LED Matrix Dashboard*\n";
   status += "---------------------------\n";
-  status += "💬 *Msg:* \"" + scrolling + "\"\n";
+  status += "💬 *Msg:* \"" + scrolling.get() + "\"\n";
   status += "⏰ *Alarm:* " + almTime + (pm ? " PM" : " AM") + " (" + String(cfg.alarmEnabled ? "ON" : "OFF") + ")\n";
   status += "🕋 *Azan:* " + String(cfg.prayerEnabled ? "ON" : "OFF") + "\n";
   status += "🔊 *Volume:* " + String(cfg.volume) + "\n";
-  status += "🌤 *Weather:* " + weatherTemp;
+  status += "🌤 *Weather:* " + weatherTemp.get();
 
   if (edit)
     bot.editMessage(msg, status.c_str(), kbd);

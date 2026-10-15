@@ -5,12 +5,14 @@
 #include <RTClib.h>
 #include <Wire.h>
 #include <rtcClock/rtcClock.h>
+#include <shared/shared_string.h>
 #include "DFRobotDFPlayerMini.h"
 
 
 extern DFRobotDFPlayerMini player;
 
-extern String timeNow, dateNow;
+extern SharedString timeNow;
+extern SharedString dateNow;
 
 
 void handleTimeTask(void *parameter);

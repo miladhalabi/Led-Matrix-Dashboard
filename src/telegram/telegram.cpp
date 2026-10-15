@@ -13,7 +13,7 @@
 AsyncTelegram2 bot(client);
 
 bool ringSent = false;
-String scrolling;
+SharedString scrolling;
 
 bool isOwner(const TBMessage &msg)
 {

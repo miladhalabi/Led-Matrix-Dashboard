@@ -8,7 +8,7 @@
 
 // OTA update state (read by the display task to show "UPDATING...")
 volatile bool isOTAUpdating = false;
-String otaProgressText = "";
+SharedString otaProgressText;
 
 namespace
 {
@@ -24,7 +24,7 @@ void startOtaUpdate(TBMessage &msg)
   bot.sendMessage(msg, "Starting firmware update from Telegram file...");
 
   // Signal the DisplayTask to show OTA status
-  otaProgressText = "UPDATING...";
+  otaProgressText.set("UPDATING...");
   isOTAUpdating = true;
 
   // AsyncTelegram2 may return a full URL or just a relative path
@@ -75,7 +75,7 @@ void startOtaUpdate(TBMessage &msg)
             Serial.println("Update complete!");
             if (Update.isFinished())
             {
-              otaProgressText = "DONE!";
+              otaProgressText.set("DONE!");
               Serial.println("Restarting...");
               delay(2000);
               ESP.restart();

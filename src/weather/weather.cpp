@@ -4,8 +4,8 @@
 #include <ArduinoJson.h>
 #include <prayerTime/prayerTime.h>
 
-String weatherTemp = "--";
-String weatherGlyph = "";
+SharedString weatherTemp("--");
+SharedString weatherGlyph;
 
 bool fetchWeather() {
     bool success = false;
@@ -37,25 +37,25 @@ bool fetchWeather() {
                 int code = doc["current"]["weather_code"];
                 int isDay = doc["current"]["is_day"];
                 
-                weatherTemp = String((int)round(temp)) + "C";
+                weatherTemp.set(String((int)round(temp)) + "C");
                 
                 // Map WMO Weather Codes to custom glyphs
                 // 0: Clear sky -> \x03 (Sun) or \x06 (Moon)
                 
                 if (code == 0) {
-                    weatherGlyph = (isDay == 1) ? "\x03" : "\x06"; // Sun or Moon
+                    weatherGlyph.set((isDay == 1) ? "\x03" : "\x06"); // Sun or Moon
                 } else if (code >= 1 && code <= 3) {
-                    weatherGlyph = "\x04"; // Cloud
+                    weatherGlyph.set("\x04"); // Cloud
                 } else if (code >= 45 && code <= 48) {
-                    weatherGlyph = "\x04"; // Cloud (Fog)
+                    weatherGlyph.set("\x04"); // Cloud (Fog)
                 } else if (code >= 51) {
-                    weatherGlyph = "\x05"; // Rain/Storm
+                    weatherGlyph.set("\x05"); // Rain/Storm
                 } else {
-                    weatherGlyph = "";
+                    weatherGlyph.set("");
                 }
                 
                 Serial.print("Weather updated: ");
-                Serial.print(weatherTemp);
+                Serial.print(weatherTemp.get());
                 Serial.print(" Code: ");
                 Serial.println(code);
                 success = true;

@@ -187,7 +187,7 @@ namespace
 
 void setScrollMessage(const String &text)
 {
-  scrolling = text;
+  scrolling.set(text);
   settings::setLastMessage(text);
 }
 
