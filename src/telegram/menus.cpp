@@ -7,6 +7,7 @@
 #include <weather/weather.h>
 #include <settings/settings.h>
 #include <telegram/telegram.h>
+#include <version/version.h>
 #include "internal.h"
 
 /**
@@ -293,7 +294,8 @@ void showMainMenu(TBMessage &msg, bool edit)
   status += "⏰ *Alarm:* " + almTime + (pm ? " PM" : " AM") + " (" + String(cfg.alarmEnabled ? "ON" : "OFF") + ")\n";
   status += "🕋 *Azan:* " + String(cfg.prayerEnabled ? "ON" : "OFF") + "\n";
   status += "🔊 *Volume:* " + String(cfg.volume) + "\n";
-  status += "🌤 *Weather:* " + weatherTemp.get();
+  status += "🌤 *Weather:* " + weatherTemp.get() + "\n";
+  status += "🔧 *Firmware:* " + String(FIRMWARE_VERSION);
 
   if (edit)
     bot.editMessage(msg, status.c_str(), kbd);

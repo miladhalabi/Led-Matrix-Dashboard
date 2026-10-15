@@ -5,6 +5,7 @@
 #include <rtcClock/rtcClock.h>
 #include <settings/settings.h>
 #include <telegram/telegram.h>
+#include <version/version.h>
 
 // The Arduino core marks a new firmware valid as soon as it boots, which makes rollback useless.
 // Returning true here keeps a freshly updated image "pending" until healthTask confirms it after it has
@@ -82,6 +83,7 @@ void healthInit()
   const String planned = prefs.getString("lastRestart", "none");
   prefs.putString("lastRestart", "none");
   prefs.end();
+  Serial.printf("Firmware %s\n", FIRMWARE_VERSION);
   Serial.printf("Boot: reset reason = %s, planned restart = %s\n", resetReasonName(esp_reset_reason()), planned.c_str());
 }
 
