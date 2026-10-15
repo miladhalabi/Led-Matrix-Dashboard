@@ -14,6 +14,7 @@
 #include <time/time.h>
 #include <prayerTime/prayerTime.h>
 #include <rtcClock/rtcClock.h>
+#include <health/health.h>
 
 TaskHandle_t TaskEncoderHandle = NULL;
 TaskHandle_t TaskDisplayHandle = NULL;
@@ -36,6 +37,7 @@ void setup()
   Serial.begin(115200);
   Serial2.begin(9600);
   Serial.println("===================UPDATED===================");
+  healthInit();
 
   pinMode(ENCODER_PIN_A, INPUT_PULLUP);
   pinMode(ENCODER_PIN_B, INPUT_PULLUP);
@@ -108,20 +110,23 @@ void setup()
   xTaskCreatePinnedToCore(handleDisplayTask, "DisplayTask", 20000, NULL, 1, &TaskDisplayHandle, 1);
   xTaskCreatePinnedToCore(handleBotTask, "BotTask", 20000, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(handleTimeTask, "TimeTask", 8192, NULL, 1, &TaskTimeHandle, 1);
-  xTaskCreatePinnedToCore(monitorFreeHeapMemory, "MemoryMonitorTask", 4096, NULL, 1, NULL, 1);
+  xTaskCreatePinnedToCore(healthTask, "HealthTask", 4096, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(alarmRing, "alarmRingTask", 4096, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(isPrayTime, "isPrayTime", 4096, NULL, 1, &TaskPrayHandle, 1);
 
   esp_task_wdt_add(TaskEncoderHandle);
   esp_task_wdt_add(TaskDisplayHandle);
   esp_task_wdt_add(TaskTimeHandle);
+
+  healthWatchTask("Encoder", TaskEncoderHandle);
+  healthWatchTask("Display", TaskDisplayHandle);
+  healthWatchTask("Time", TaskTimeHandle);
+  healthWatchTask("Prayer", TaskPrayHandle);
   // esp_task_wdt_add(TaskPrayHandle);
 }
 
 void loop()
 {
   iotWebConf.doLoop();
-  resetEveryTwoHours();
-  // isPrayTime();
   esp_task_wdt_reset(); // Reset the watchdog timer in the main loop
 }
