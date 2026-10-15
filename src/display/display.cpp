@@ -40,6 +40,14 @@ void handleDisplayTask(void *parameter)
       continue;
     }
 
+    // The alarm screen takes over the matrix until it is dismissed or times out
+    if (HandleAlarmTask())
+    {
+      esp_task_wdt_reset();
+      vTaskDelay(10 / portTICK_PERIOD_MS);
+      continue;
+    }
+
     if (millis() - lastPageTime >= PAGE_INTERVAL_MS)
     {
       if (myDisplay.displayAnimate())
@@ -65,7 +73,6 @@ void handleDisplayTask(void *parameter)
     {
       handleEncoder();
     }
-    HandleAlarmTask();
     esp_task_wdt_reset();                // Reset the watchdog timer
     vTaskDelay(10 / portTICK_PERIOD_MS); // Small delay to yield
   }

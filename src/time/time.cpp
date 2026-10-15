@@ -48,37 +48,52 @@ void handleTimeTask(void *parameter)
   }
 }
 
-void HandleAlarmTask()
+namespace
 {
-  unsigned long Otime = millis();
+  const unsigned long ALARM_SCREEN_MS = 180000; // the alarm gives up after three minutes
+  const unsigned long ALARM_CHECK_MS = 250;
+  bool alarmShowing = false;
+  unsigned long alarmShownAt = 0;
+  unsigned long lastAlarmCheck = 0;
+}
+
+// Called from the display task on every pass. Never blocks.
+// While it returns true the display shows "ALARM" and the caller must leave the matrix alone.
+bool HandleAlarmTask()
+{
+  if (alarmShowing)
+  {
+    if (millis() - alarmShownAt > ALARM_SCREEN_MS || longpress(PRESS_PIN, 20, 0))
+    {
+      Serial.println("alarm goes");
+      AlarmExit = true;
+      alarmShowing = false;
+    }
+    return alarmShowing;
+  }
+
+  if (millis() - lastAlarmCheck < ALARM_CHECK_MS)
+    return false;
+  lastAlarmCheck = millis();
+
   DateTime now = rtcNow();
   const Settings cfg = settings::get();
   if (now.hour() == cfg.alarmHour && now.minute() == cfg.alarmMinute && cfg.alarmEnabled && AlarmExit == false)
   {
     ringSent = true;
-    // player.reset();
-    // player.volume(cfg.volume);
     myDisplay.print("ALARM");
-    while (true)
-    {
-      unsigned long Ctime = millis();
-
-      if ((Ctime - Otime > 180000) || longpress(PRESS_PIN, 20, 0))
-      {
-        Serial.println("alarm goes");
-        AlarmExit = true;
-        break;
-      }
-      vTaskDelay(20 / portTICK_PERIOD_MS);
-      esp_task_wdt_reset();
-    }
+    alarmShowing = true;
+    alarmShownAt = millis();
+    return true;
   }
-  else if (now.minute() != cfg.alarmMinute)
+  if (now.minute() != cfg.alarmMinute)
   {
     AlarmExit = false;
   }
+  return false;
 }
 
+// Plays the alarm / azan sound and stops it on a button press or after a timeout.
 void alarmRing(void *parameter)
 {
   unsigned long oldRingTime = 0;
@@ -94,7 +109,7 @@ void alarmRing(void *parameter)
       ringSent = false;
       ringed = true;
     }
-    else if(AzanNow == true)
+    else if (AzanNow == true)
     {
       Serial.println("AZAN");
       oldAzanTime = millis();
@@ -103,10 +118,10 @@ void alarmRing(void *parameter)
       Azan = true;
     }
 
-    if ((longpress(PRESS_PIN, 20, 0) && ringed == true) || (longpress(PRESS_PIN, 20, 0) && Azan == true)  || ((millis() - oldRingTime > 180000) && ringed == true ) || ((millis() - oldAzanTime > 234000) && Azan == true))
+    if ((longpress(PRESS_PIN, 20, 0) && ringed == true) || (longpress(PRESS_PIN, 20, 0) && Azan == true) || ((millis() - oldRingTime > 180000) && ringed == true) || ((millis() - oldAzanTime > 234000) && Azan == true))
     {
       player.stop();
-      if(ringed == true)
+      if (ringed == true)
       {
         ringed = false;
       }
@@ -115,5 +130,6 @@ void alarmRing(void *parameter)
         Azan = false;
       }
     }
+    vTaskDelay(20 / portTICK_PERIOD_MS); // without this the task spins and starves the others
   }
 }

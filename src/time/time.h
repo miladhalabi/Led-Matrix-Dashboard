@@ -16,7 +16,7 @@ extern SharedString dateNow;
 
 
 void handleTimeTask(void *parameter);
-void HandleAlarmTask();
+bool HandleAlarmTask(); // true while the alarm screen is showing
 void alarmRing(void *parameter);
 
 
