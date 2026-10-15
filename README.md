@@ -116,6 +116,17 @@ Send `/start` to your bot to open the **Live Dashboard**.
 *   **🕋 Azan**: Toggle the automated prayer call.
 *   **🌤 Weather**: Manually force a refresh of the weather data.
 
+### Animations
+Send a message that is exactly `heart` or `pacman` to play the built-in animations. To play your own, send:
+
+```
+anim,<frames>,<width>,<bytes>
+```
+
+A frame is `<width>` bytes, one per column from left to right; in each byte the lowest bit is the top row. Frames follow each other, so there are `frames × width` bytes (at most 512, width at most 32), written as two hex digits each, with optional spaces or commas between them. The word `anim` must be in lower case. The sprite crosses the display from left to right, changing frame at every step.
+
+Easier than typing hex: draw it in **Pixel Studio** (`../Led-Matrix-Studio`), a phone app with a live preview that produces this command for you.
+
 ### Local Control (Rotary Encoder)
 The device features a complete on-device menu system for offline configuration.
 1.  **Enter Menu**: Long-press the encoder button for 1 second.
