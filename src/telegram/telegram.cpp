@@ -1,579 +1,103 @@
 #include <Arduino.h>
 #include <AsyncTelegram2.h>
-#include <ArduinoJson.h>
 #include <esp_task_wdt.h>
 #include <wifi/wifi.h>
 #include <flashUtils/flashUtils.h>
-#include <setters/setters.h>
-#include <time/time.h>
-#include <formaters/formaters.h>
-#include <parsers/parsers.h>
-#include <converters/converters.h>
-#include <encoder/encoder.h>
 #include <usersManagement/usersManagement.h>
 #include <prayerTime/prayerTime.h>
-#include <weather/weather.h>
-#include <HTTPUpdate.h>
-#include <Update.h>
-#include <display/display.h>
-#include <settings/settings.h>
+#include "telegram.h"
+#include "internal.h"
 
 #define BOT_REQUEST_DELAY 1000
 
-// Callback constants for button identification
-#define CB_MAIN          "main"
-#define CB_EDIT_MSG      "edit_msg"
-#define CB_ALARM_MENU    "alarm_menu"
-#define CB_TIME_MENU     "time_menu"
-#define CB_VOL_MENU      "vol_menu"
-#define CB_AZAN_TOGGLE   "azan_toggle"
-#define CB_REFRESH       "refresh"
-#define CB_WEATHER_REF   "weather_ref"
-#define CB_RING          "ring_bot"
-#define CB_ALARM_TOG_M   "alm_tog_m"
-
-#define CB_ALARM_H_UP    "alm_h_u"
-#define CB_ALARM_H_DN    "alm_h_d"
-#define CB_ALARM_M_UP    "alm_m_u"
-#define CB_ALARM_M_DN    "alm_m_d"
-#define CB_ALARM_P_TOG   "alm_p_t"
-#define CB_ALARM_SAVE    "alm_save"
-#define CB_ALARM_TOGGLE  "alm_toggle"
-
 AsyncTelegram2 bot(client);
 
-String scrollMessage = "no message";
-unsigned long lastTimeBotRan;
 bool ringSent = false;
 String scrolling;
 
-// OTA update state (shared with DisplayTask)
-volatile bool isOTAUpdating = false;
-String otaProgressText = "";
-
-// Draft variables for interactive editing
-int draftHour = 12;
-int draftMin = 0;
-bool draftIsPm = false;
-bool isEditingMsg = false;
-String otaFilePath = "";
-
-void handleOTAUpdate(TBMessage &msg, const String &filePath) {
-    bot.sendMessage(msg, "Starting firmware update from Telegram file...");
-    
-    // Signal the DisplayTask to show OTA status
-    otaProgressText = "UPDATING...";
-    isOTAUpdating = true;
-    
-    // Build the download URL using the Telegram Bot API file download endpoint
-    // AsyncTelegram2 may return a full URL or just a relative path
-    String url;
-    if (filePath.startsWith("https://")) {
-        url = filePath;
-    } else {
-        url = "https://api.telegram.org/file/bot" + botToken() + "/" + filePath;
-    }
-    
-    Serial.println("OTA URL: " + url);
-    
-    // Disable watchdog to prevent restart during download
-    esp_task_wdt_delete(NULL);
-    
-    // Close the Telegram connection to free up RAM for the download
-    client.stop();
-    
-    HTTPClient http;
-    http.begin(client, url);
-    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-    
-    int httpCode = http.GET();
-    Serial.print("OTA HTTP Code: ");
-    Serial.println(httpCode);
-    
-    if (httpCode == 200) {
-        int contentLength = http.getSize();
-        Serial.print("OTA File Size: ");
-        Serial.println(contentLength);
-        
-        if (contentLength > 0) {
-            WiFiClient *stream = http.getStreamPtr();
-            
-            if (Update.begin(contentLength)) {
-                Serial.println("Writing firmware to flash...");
-                size_t written = Update.writeStream(*stream);
-                
-                if (written == (size_t)contentLength) {
-                    Serial.println("Firmware written successfully!");
-                    if (Update.end()) {
-                        Serial.println("Update complete!");
-                        if (Update.isFinished()) {
-                            otaProgressText = "DONE!";
-                            Serial.println("Restarting...");
-                            delay(2000);
-                            ESP.restart();
-                        }
-                    } else {
-                        Serial.print("Update failed: ");
-                        Serial.println(Update.getError());
-                    }
-                } else {
-                    Serial.println("Written bytes mismatch!");
-                }
-            } else {
-                Serial.println("Not enough space for OTA");
-            }
-        } else {
-            Serial.println("Content length is 0 or unknown");
-        }
-    } else {
-        Serial.print("HTTP GET failed: ");
-        Serial.println(httpCode);
-    }
-    
-    http.end();
-    
-    // If we reach here, the update failed - reboot to restore Telegram connection
-    Serial.println("OTA failed, rebooting to restore connection...");
-    delay(1000);
-    ESP.restart();
+bool isOwner(const TBMessage &msg)
+{
+  const String owner = ownerChatId();
+  return owner.length() > 0 && String(msg.chatId) == owner;
 }
 
-void showMainMenu(TBMessage &msg, bool edit = false) {
-    InlineKeyboard mainKbd(BUFFER_MEDIUM);
-    const Settings cfg = settings::get();
-    mainKbd.addButton("📝 Msg", CB_EDIT_MSG, KeyboardButtonQuery);
-    mainKbd.addButton("🔔 Ring", CB_RING, KeyboardButtonQuery);
-    mainKbd.addRow();
-    
-    mainKbd.addButton("🕒 Time", CB_TIME_MENU, KeyboardButtonQuery);
-    mainKbd.addButton("🔊 Vol", CB_VOL_MENU, KeyboardButtonQuery);
-    mainKbd.addRow();
-
-    mainKbd.addButton("⏰ Set", CB_ALARM_MENU, KeyboardButtonQuery);
-    String almToggleLabel = cfg.alarmEnabled ? "⏰ ON" : "⏰ OFF";
-    mainKbd.addButton(almToggleLabel.c_str(), CB_ALARM_TOG_M, KeyboardButtonQuery);
-    mainKbd.addRow();
-
-    String azanLabel = cfg.prayerEnabled ? "🕋 Azan: ON" : "🕋 Azan: OFF";
-    mainKbd.addButton(azanLabel.c_str(), CB_AZAN_TOGGLE, KeyboardButtonQuery);
-    mainKbd.addRow();
-    
-    mainKbd.addButton("🌤 Weather", CB_WEATHER_REF, KeyboardButtonQuery);
-    mainKbd.addButton("🔄 Refresh", CB_REFRESH, KeyboardButtonQuery);
-
-    String status = "🏠 *LED Matrix Dashboard*\n";
-    status += "---------------------------\n";
-    status += "💬 *Msg:* \"" + scrolling + "\"\n";
-    
-    bool pm = false;
-    String almTime = formatTime12Hour(cfg.alarmHour, cfg.alarmMinute, pm);
-    status += "⏰ *Alarm:* " + almTime + (pm ? " PM" : " AM") + " (" + String(cfg.alarmEnabled ? "ON" : "OFF") + ")\n";
-    status += "🕋 *Azan:* " + String(cfg.prayerEnabled ? "ON" : "OFF") + "\n";
-    status += "🔊 *Volume:* " + String(cfg.volume) + "\n";
-    status += "🌤 *Weather:* " + weatherTemp;
-
-    if (edit) {
-        bot.editMessage(msg, status.c_str(), mainKbd);
-    } else {
-        bot.sendMessage(msg, status.c_str(), mainKbd);
-    }
+// The owner (set in the config portal) and everyone the owner added with "add,<id>".
+static bool isAuthorized(const TBMessage &msg)
+{
+  if (isOwner(msg))
+    return true;
+  const String chat = String(msg.chatId);
+  for (int i = 0; i < ChatIDsLength; i++)
+  {
+    if (ChatIDs[i] != "" && chat == ChatIDs[i])
+      return true;
+  }
+  return false;
 }
 
-void showAlarmMenu(TBMessage &msg) {
-    InlineKeyboard almKbd;
-    almKbd.addButton("H +", CB_ALARM_H_UP, KeyboardButtonQuery);
-    almKbd.addButton("M +", CB_ALARM_M_UP, KeyboardButtonQuery);
-    almKbd.addRow();
-    
-    char timeStr[20];
-    sprintf(timeStr, "%02d : %02d %s", draftHour, draftMin, draftIsPm ? "PM" : "AM");
-    almKbd.addButton(timeStr, "none", KeyboardButtonQuery);
-    almKbd.addRow();
+// Only the owner may send firmware.
+static void handleDocument(TBMessage &msg)
+{
+  if (!isOwner(msg))
+  {
+    bot.sendMessage(msg, "Only the owner can send firmware.");
+    return;
+  }
+  if (!msg.document.file_exists)
+    return;
 
-    almKbd.addButton("H -", CB_ALARM_H_DN, KeyboardButtonQuery);
-    almKbd.addButton("M -", CB_ALARM_M_DN, KeyboardButtonQuery);
-    almKbd.addRow();
-    
-    almKbd.addButton(draftIsPm ? "Switch to AM" : "Switch to PM", CB_ALARM_P_TOG, KeyboardButtonQuery);
-    almKbd.addRow();
-    
-    String toggleLabel = settings::get().alarmEnabled ? "Turn OFF" : "Turn ON";
-    almKbd.addButton(toggleLabel.c_str(), CB_ALARM_TOGGLE, KeyboardButtonQuery);
-    almKbd.addRow();
+  if (!msg.document.file_path.endsWith(".bin"))
+  {
+    bot.sendMessage(msg, "Only .bin firmware files are supported.");
+    return;
+  }
 
-    almKbd.addButton("✅ SAVE", CB_ALARM_SAVE, KeyboardButtonQuery);
-    almKbd.addButton("❌ Back", CB_MAIN, KeyboardButtonQuery);
-
-    bot.editMessage(msg, "⏰ *Set Alarm Time*", almKbd);
+  rememberFirmware(msg.document.file_path);
+  String info = "Firmware file received!\n";
+  info += "File: " + String(msg.document.file_name) + "\n";
+  info += "Size: " + String(msg.document.file_size) + " bytes\n\n";
+  info += "Type 'update' to start the firmware update.";
+  bot.sendMessage(msg, info);
 }
 
-void showVolMenu(TBMessage &msg) {
-    InlineKeyboard volKbd;
-    volKbd.addButton("5", "vol_5", KeyboardButtonQuery);
-    volKbd.addButton("10", "vol_10", KeyboardButtonQuery);
-    volKbd.addButton("15", "vol_15", KeyboardButtonQuery);
-    volKbd.addRow();
-    volKbd.addButton("20", "vol_20", KeyboardButtonQuery);
-    volKbd.addButton("25", "vol_25", KeyboardButtonQuery);
-    volKbd.addButton("30", "vol_30", KeyboardButtonQuery);
-    volKbd.addRow();
-    volKbd.addButton("❌ Back", CB_MAIN, KeyboardButtonQuery);
+static void handleText(TBMessage &msg)
+{
+  const String text = msg.text;
 
-    bot.editMessage(msg, "🔊 *Set Volume*", volKbd);
-}
+  if (takeAwaitingMessage())
+  {
+    setScrollMessage(text);
+    bot.sendMessage(msg, "✅ Message updated!");
+    showMainMenu(msg);
+    return;
+  }
 
-#define CB_TIME_H_UP    "time_h_u"
-#define CB_TIME_H_DN    "time_h_d"
-#define CB_TIME_M_UP    "time_m_u"
-#define CB_TIME_M_DN    "time_m_d"
-#define CB_TIME_P_TOG   "time_p_t"
-#define CB_TIME_SAVE    "time_save"
+  if (runTextCommand(msg, text))
+    return;
 
-void showTimeMenu(TBMessage &msg) {
-    InlineKeyboard timeKbd;
-    timeKbd.addButton("H +", CB_TIME_H_UP, KeyboardButtonQuery);
-    timeKbd.addButton("M +", CB_TIME_M_UP, KeyboardButtonQuery);
-    timeKbd.addRow();
-    
-    char timeStr[20];
-    sprintf(timeStr, "%02d : %02d %s", draftHour, draftMin, draftIsPm ? "PM" : "AM");
-    timeKbd.addButton(timeStr, "none", KeyboardButtonQuery);
-    timeKbd.addRow();
-
-    timeKbd.addButton("H -", CB_TIME_H_DN, KeyboardButtonQuery);
-    timeKbd.addButton("M -", CB_TIME_M_DN, KeyboardButtonQuery);
-    timeKbd.addRow();
-    
-    timeKbd.addButton(draftIsPm ? "Switch to AM" : "Switch to PM", CB_TIME_P_TOG, KeyboardButtonQuery);
-    timeKbd.addRow();
-
-    timeKbd.addButton("✅ UPDATE RTC", CB_TIME_SAVE, KeyboardButtonQuery);
-    timeKbd.addRow();
-    timeKbd.addButton("❌ Back", CB_MAIN, KeyboardButtonQuery);
-
-    bot.editMessage(msg, "🕒 *Set System Time*", timeKbd);
+  setScrollMessage(text);
+  bot.sendMessage(msg, "Message received");
 }
 
 void handleNewMessage(TBMessage &msg)
 {
-    loadStringArray("usersArray" , ChatIDs , 10);
-    String chat_id = String(msg.chatId);
-    String text = msg.text;
-    
-    // Only the owner (set in the config portal) and users added with "add,<id>" may use the bot.
-    String owner = ownerChatId();
-    bool allowed = owner.length() > 0 && chat_id == owner;
-    for (int j = 0; j < ChatIDsLength && !allowed; j++)
-    {
-      allowed = ChatIDs[j] != "" && chat_id == ChatIDs[j];
-    }
-    if (!allowed) return;
+  if (!isAuthorized(msg))
+    return;
 
-    // Handle document uploads (.bin firmware files)
-    if (msg.messageType == MessageDocument && msg.document.file_exists) {
-        if (msg.document.file_path.endsWith(".bin")) {
-            otaFilePath = msg.document.file_path;
-            String info = "Firmware file received!\n";
-            info += "File: " + String(msg.document.file_name) + "\n";
-            info += "Size: " + String(msg.document.file_size) + " bytes\n\n";
-            info += "Type 'update' to start the firmware update.";
-            bot.sendMessage(msg, info);
-            return;
-        } else {
-            bot.sendMessage(msg, "Only .bin firmware files are supported.");
-            return;
-        }
-    }
-
-    // Handle button clicks
-    if (msg.messageType == MessageQuery) {
-        String data = msg.callbackQueryData;
-        
-        if (data == CB_REFRESH || data == CB_MAIN) {
-            fetchWeather();
-            showMainMenu(msg, true);
-        }
-        else if (data == CB_AZAN_TOGGLE) {
-            azanSetter(settings::get().prayerEnabled ? "azan off" : "azan on");
-            showMainMenu(msg, true);
-        }
-        else if (data == CB_ALARM_TOG_M) {
-            alarmSetter(settings::get().alarmEnabled ? "ALARM OFF" : "ALARM ON");
-            showMainMenu(msg, true);
-        }
-        else if (data == CB_WEATHER_REF) {
-            fetchWeather();
-            showMainMenu(msg, true);
-        }
-        else if (data == CB_RING) {
-            ringSent = true;
-            bot.endQuery(msg, "Ringing...");
-            return;
-        }
-        else if (data == CB_EDIT_MSG) {
-            isEditingMsg = true;
-            bot.sendMessage(msg, "📝 Send me the new message to scroll:");
-        }
-        else if (data == CB_ALARM_MENU) {
-            // Load current alarm into draft
-            draftIsPm = false;
-            const Settings cfg = settings::get();
-            String alm12 = formatTime12Hour(cfg.alarmHour, cfg.alarmMinute, draftIsPm);
-            parseTime(alm12, draftHour, draftMin, data); // reuse data as temp
-            showAlarmMenu(msg);
-        }
-        else if (data == CB_ALARM_H_UP) {
-            draftHour = (draftHour % 12) + 1;
-            showAlarmMenu(msg);
-        }
-        else if (data == CB_ALARM_H_DN) {
-            draftHour = (draftHour == 1) ? 12 : draftHour - 1;
-            showAlarmMenu(msg);
-        }
-        else if (data == CB_ALARM_M_UP) {
-            draftMin = (draftMin + 5) % 60;
-            showAlarmMenu(msg);
-        }
-        else if (data == CB_ALARM_M_DN) {
-            draftMin = (draftMin < 5) ? 55 : draftMin - 5;
-            showAlarmMenu(msg);
-        }
-        else if (data == CB_ALARM_P_TOG) {
-            draftIsPm = !draftIsPm;
-            showAlarmMenu(msg);
-        }
-        else if (data == CB_ALARM_TOGGLE) {
-            alarmSetter(settings::get().alarmEnabled ? "ALARM OFF" : "ALARM ON");
-            showAlarmMenu(msg);
-        }
-        else if (data == CB_VOL_MENU) {
-            showVolMenu(msg);
-        }
-        else if (data == CB_TIME_MENU) {
-            DateTime now = rtc.now();
-            String dummy;
-            String t12 = formatTime12Hour(now.hour(), now.minute(), draftIsPm);
-            parseTime(t12, draftHour, draftMin, dummy);
-            showTimeMenu(msg);
-        }
-        else if (data == CB_TIME_H_UP) {
-            draftHour = (draftHour % 12) + 1;
-            showTimeMenu(msg);
-        }
-        else if (data == CB_TIME_H_DN) {
-            draftHour = (draftHour == 1) ? 12 : draftHour - 1;
-            showTimeMenu(msg);
-        }
-        else if (data == CB_TIME_M_UP) {
-            draftMin = (draftMin + 1) % 60;
-            showTimeMenu(msg);
-        }
-        else if (data == CB_TIME_M_DN) {
-            draftMin = (draftMin == 0) ? 59 : draftMin - 1;
-            showTimeMenu(msg);
-        }
-        else if (data == CB_TIME_P_TOG) {
-            draftIsPm = !draftIsPm;
-            showTimeMenu(msg);
-        }
-        else if (data == CB_TIME_SAVE) {
-            int h24, m24;
-            convertTo24Hour(draftHour, draftMin, draftIsPm ? "PM" : "AM", h24, m24);
-            DateTime now = rtc.now();
-            rtc.adjust(DateTime(now.year(), now.month(), now.day(), h24, m24, 0));
-            bot.sendMessage(msg, "✅ System time updated!");
-            showMainMenu(msg);
-        }
-        else if (data.startsWith("vol_")) {
-            String volStr = data.substring(4);
-            volumeSetter("volume " + volStr);
-            showMainMenu(msg, true);
-        }
-        else if (data == CB_ALARM_SAVE) {
-            int h24, m24;
-            convertTo24Hour(draftHour, draftMin, draftIsPm ? "PM" : "AM", h24, m24);
-            settings::setAlarmTime(h24, m24);
-            bot.sendMessage(msg, "✅ Alarm saved!");
-            showMainMenu(msg);
-        }
-        
-        bot.endQuery(msg, "Updated");
-        return;
-    }
-
-    // Handle normal text messages
-    if (isEditingMsg) {
-        scrollMessage = text;
-        scrolling = text;
-        settings::setLastMessage(scrollMessage);
-        isEditingMsg = false;
-        bot.sendMessage(msg, "✅ Message updated!");
-        showMainMenu(msg);
-        return;
-    }
-
-    if (text == "/start" || text == "help") {
-        showMainMenu(msg);
-    }
-    else if(text == "ring")
-    {
-        ringSent = true;
-        bot.sendMessage(msg, "ringing...");
-    }
-    else if (text == "update")
-    {
-        if (otaFilePath.length() > 0) {
-            handleOTAUpdate(msg, otaFilePath);
-        } else {
-            bot.sendMessage(msg, "No firmware file received yet. Send a .bin file first.");
-        }
-    }
-    else if (text == "praytime" || text == "/praytimes")
-    {
-        String response = "Prayer Times for Today\n";
-        response += "-----------------------\n";
-        response += "Fajr:    " + prayTimeArray[0] + "\n";
-        response += "Dhuhr:   " + prayTimeArray[1] + "\n";
-        response += "Asr:     " + prayTimeArray[2] + "\n";
-        response += "Maghrib: " + prayTimeArray[3] + "\n";
-        response += "Isha:    " + prayTimeArray[4];
-        bot.sendMessage(msg, response);
-    }
-    else if (text.startsWith("alarm"))
-    {
-        if(alarmSetter(text))
-        {
-          bool Pm = false;
-          const Settings cfg = settings::get();
-          String formatedTime = formatTime12Hour(cfg.alarmHour , cfg.alarmMinute , Pm);
-          String checkAlarmSetting = "";
-          if(cfg.alarmEnabled)
-          {
-            if(Pm)
-            {
-              checkAlarmSetting = "alarm on " + formatedTime + " PM";
-            }
-            else
-            {
-              checkAlarmSetting = "alarm on " + formatedTime + " AM";
-            }
-          }
-          else
-          {
-            checkAlarmSetting = "alarm off";
-          }
-          bot.sendMessage(msg, checkAlarmSetting);
-        }
-        else
-        {
-          bot.sendMessage(msg, "Invalid values");
-        }
-      }
-      else if (text.startsWith("azan"))
-      {
-        String azanValidation = "";
-        if(azanSetter(text))
-        {
-          azanValidation = String("azan ") + (settings::get().prayerEnabled ? "ON" : "OFF");
-        }
-        else
-        {
-          azanValidation = "Invalid values";
-        }
-        bot.sendMessage(msg, azanValidation);
-      }
-      else if (text.startsWith("volume"))
-      {
-        if (volumeSetter(text))
-        {
-          String volumeToSend = "volume on " + String(settings::get().volume);
-          bot.sendMessage(msg, volumeToSend);
-        }
-        else 
-        {
-          bot.sendMessage(msg, "Invalid values");
-        }
-      }
-      else if (text.startsWith("time"))
-      {
-        if(timeSetter(text))
-        {
-          DateTime timeValidation = rtc.now();
-          String settingValidation = "";
-          bool isPm = false;
-          int hourValidation = timeValidation.hour(), minuteValidation = timeValidation.minute();
-          String to12Hour = formatTime12Hour(hourValidation , minuteValidation , isPm);
-          if(isPm)
-          {
-            settingValidation = "Time Setted On " + to12Hour + " PM";
-          }
-          else
-          {
-            settingValidation = "Time Setted On " + to12Hour + " AM";
-          }
-          bot.sendMessage(msg, settingValidation);
-        }
-        else
-        {
-          bot.sendMessage(msg, "Invalid Values");
-        }
-      }
-      else if (text.startsWith("date"))
-      {
-        if(dateSetter(text))
-        {
-          DateTime dateValidation = rtc.now();
-          String settingValidation = "Date Setted On " + String(dateValidation.year()) +"/"+ String(dateValidation.month()) + "/" + String(dateValidation.day());
-          bot.sendMessage(msg, settingValidation);
-        }
-        else
-        {
-          bot.sendMessage(msg, "Invalid Values");
-        }
-      }
-      else if (text.startsWith("add"))
-      {
-        if(addUser(ChatIDs ,  10 , text))
-        {
-          bot.sendMessage(msg, "User Added");
-          loadStringArray("usersArray" , ChatIDs , 10);
-        }
-        else 
-        {
-          bot.sendMessage(msg, "Invalid Values");
-        }
-      }
-      else if (text.startsWith("remove"))
-      {
-        if(removeUser(ChatIDs ,  10 , text))
-        {
-          bot.sendMessage(msg, "User Removed");
-          loadStringArray("usersArray" , ChatIDs , 10);
-        }
-        else 
-        {
-          bot.sendMessage(msg, "Invalid Values");
-        }
-      }
-      else if (text == "list users")
-      {
-        String signedUsers = listUsers(ChatIDs , 10);
-        if(signedUsers == "")
-        {
-          bot.sendMessage(msg, "No Users");
-        }
-        else 
-        {
-          bot.sendMessage(msg, signedUsers);
-        }
-      }
-      else
-      {
-        scrollMessage = text;
-        scrolling = text;
-        settings::setLastMessage(scrollMessage);
-        bot.sendMessage(msg, "Message received");
-      }
+  switch (msg.messageType)
+  {
+  case MessageQuery:
+    runCallback(msg, msg.callbackQueryData);
+    break;
+  case MessageDocument:
+    handleDocument(msg);
+    break;
+  case MessageText:
+    handleText(msg);
+    break;
+  default: // stickers, photos, ... are ignored
+    break;
+  }
 }
 
 void handleBotTask(void *parameter)
@@ -581,28 +105,34 @@ void handleBotTask(void *parameter)
   bot.setUpdateTime(BOT_REQUEST_DELAY);
 
   // Wait for WiFi and for a token to be entered in the config portal
-  while (WiFi.status() != WL_CONNECTED || botToken().length() == 0) {
+  while (WiFi.status() != WL_CONNECTED || botToken().length() == 0)
+  {
     vTaskDelay(1000 / portTICK_PERIOD_MS);
   }
   bot.setTelegramToken(botTokenRaw());
+  loadStringArray("usersArray", ChatIDs, ChatIDsLength);
 
   Serial.println("Telegram bot starting...");
-  if (bot.begin()) {
+  if (bot.begin())
+  {
     Serial.println("Telegram bot started");
-  } else {
+  }
+  else
+  {
     Serial.println("Telegram bot failed to start");
   }
 
   for (;;)
   {
-    if(fetchingAPI == false){
+    if (fetchingAPI == false)
+    {
       TBMessage msg;
       if (bot.getNewMessage(msg))
       {
         handleNewMessage(msg);
       }
     }
-    
+
     esp_task_wdt_reset();                // Reset the watchdog timer
     vTaskDelay(10 / portTICK_PERIOD_MS); // Small delay to yield
   }
