@@ -6,15 +6,19 @@
 #include <WiFiClientSecure.h>
 #include <IotWebConf.h>
 
-#define WIFI_INITIAL_AP_PASSWORD "m12345678"
-#define THING_NAME "testThing"
-
 extern WiFiClientSecure client;
 extern DNSServer dnsServer;
 extern WebServer server;
 extern IotWebConf iotWebConf;
 
 void handleRoot();
+
+// This device's own WiFi name and first-time setup password. The password is random, made once
+// and kept in flash, so there is no default that every device shares. Call first thing in setup().
+void prepareDeviceIdentity();
+const char *setupWifiName();
+const char *setupWifiPassword();
+bool waitingForFirstSetup(); // true until WiFi has been configured in the portal
 
 // Telegram credentials, entered in the IotWebConf config page (never hardcoded).
 void setupTelegramConfig(); // call before iotWebConf.init()

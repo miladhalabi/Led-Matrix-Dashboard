@@ -96,10 +96,10 @@ The owner can add other users with `add,<chat id>`. Only the owner can add or re
 ## 📲 Usage
 
 ### Initial WiFi Setup
-1. On first boot, the ESP32 creates a WiFi hotspot named **"testThing"**.
-2. Connect to it (Password: `m12345678`).
-3. Your phone should open a portal (or go to `192.168.4.1`).
-4. Enter your home WiFi credentials and save. The device will reboot and connect.
+1. On first boot the matrix scrolls the setup instructions: the device's own hotspot name (`LedMatrix-XXXX`) and its **setup password**. The password is random, different for every device, and also printed on the serial monitor.
+2. Join that hotspot from your phone. A setup page opens (or go to `192.168.4.1`).
+3. Enter your home WiFi, choose **your own hotspot password** (this is also the password for the config page later, user `admin`), and fill in the Telegram **bot token** and **owner chat ID**.
+4. Save. The device restarts and connects. To change anything later, open `http://<device name or IP>/config`.
 
 ### Telegram Dashboard
 Send `/start` to your bot to open the **Live Dashboard**.

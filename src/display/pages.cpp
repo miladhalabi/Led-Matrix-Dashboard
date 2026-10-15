@@ -3,6 +3,7 @@
 #include <time/time.h>
 #include <telegram/telegram.h>
 #include <parsers/parsers.h>
+#include <wifi/wifi.h>
 #include "display.h"
 #include "pages.h"
 
@@ -19,6 +20,7 @@ namespace
   // lives in buffers of our own (a temporary String would be gone by then).
   char messageText[512];
   char dateText[128];
+  char setupText[96];
 
   const char *hold(char *buffer, size_t size, const String &text)
   {
@@ -83,7 +85,17 @@ const uint8_t PROGMEM heart[F_HEART * W_HEART] =
     myDisplay.displayScroll(hold(dateText, sizeof(dateText), dateNow.get()), PA_CENTER, PA_SCROLL_LEFT, 50);
   }
 
+  // Until WiFi is configured the matrix tells you how to reach the setup page.
+  bool needsSetup() { return waitingForFirstSetup(); }
+
+  void showSetupPage()
+  {
+    const String text = String("Setup: join WiFi ") + setupWifiName() + "  password " + setupWifiPassword() + "  then open 192.168.4.1";
+    myDisplay.displayScroll(hold(setupText, sizeof(setupText), text), PA_CENTER, PA_SCROLL_LEFT, 50);
+  }
+
   const Page PAGES[] = {
+      {"setup", needsSetup, showSetupPage},
       {"message", always, showMessagePage},
       {"date", always, showDatePage},
   };

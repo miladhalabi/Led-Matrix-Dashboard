@@ -2,17 +2,46 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <IotWebConf.h>
-
-#define WIFI_INITIAL_AP_PASSWORD "m12345678"
-#define THING_NAME "testThing"
+#include <Preferences.h>
 
 WiFiClientSecure client;
 DNSServer dnsServer;
 WebServer server(80);
 // Bump when the stored parameter layout changes: the portal then asks for all values again.
-#define CONFIG_VERSION "tg1"
+#define CONFIG_VERSION "tg2"
 
-IotWebConf iotWebConf(THING_NAME, &dnsServer, &server, WIFI_INITIAL_AP_PASSWORD, CONFIG_VERSION);
+// IotWebConf keeps these pointers, so the text is filled in by prepareDeviceIdentity() before init().
+static char deviceName[24] = "LedMatrix";
+static char setupPassword[12] = "";
+
+IotWebConf iotWebConf(deviceName, &dnsServer, &server, setupPassword, CONFIG_VERSION);
+
+void prepareDeviceIdentity()
+{
+  // "LedMatrix-A1B2": the last two bytes of the chip's MAC address, to tell devices apart
+  const uint64_t mac = ESP.getEfuseMac();
+  snprintf(deviceName, sizeof(deviceName), "LedMatrix-%02X%02X", (unsigned)((mac >> 40) & 0xFF), (unsigned)((mac >> 32) & 0xFF));
+
+  Preferences prefs;
+  prefs.begin("wifi", false);
+  String saved = prefs.getString("setupPw", "");
+  if (saved.length() != 8)
+  {
+    // No 0/O/1/I/L: the password is read off the matrix and typed on a phone
+    static const char alphabet[] = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+    saved = "";
+    for (int i = 0; i < 8; i++)
+      saved += alphabet[(esp_random() ^ micros()) % (sizeof(alphabet) - 1)];
+    prefs.putString("setupPw", saved);
+  }
+  prefs.end();
+  strlcpy(setupPassword, saved.c_str(), sizeof(setupPassword));
+  Serial.printf("First-time setup WiFi: %s  password: %s\n", deviceName, setupPassword);
+}
+
+const char *setupWifiName() { return deviceName; }
+const char *setupWifiPassword() { return setupPassword; }
+bool waitingForFirstSetup() { return iotWebConf.getState() == iotwebconf::NotConfigured; }
 
 static char botTokenValue[64];
 static char ownerChatIdValue[24];
