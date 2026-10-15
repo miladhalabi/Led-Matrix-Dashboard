@@ -70,6 +70,7 @@ void setup()
   encoder.attachSingleEdge(ENCODER_PIN_A, ENCODER_PIN_B);
   encoder.clearCount();
 
+  iotWebConf.setStatusPin(LED_PIN, HIGH); // the DevKit LED is on when the pin is high
   setupTelegramConfig();
   iotWebConf.init();
 
