@@ -3,6 +3,7 @@
 #include <Update.h>
 #include <Preferences.h>
 #include <mbedtls/sha256.h>
+#include <textUtils/textUtils.h>
 #include <esp_task_wdt.h>
 #include <wifi/wifi.h>
 #include <telegram/telegram.h>
@@ -15,19 +16,6 @@ SharedString otaProgressText;
 namespace
 {
   String firmwarePath; // Telegram file path of the last .bin the owner sent
-
-  String toHex(const uint8_t *bytes, size_t length)
-  {
-    static const char digits[] = "0123456789abcdef";
-    String hex;
-    hex.reserve(length * 2);
-    for (size_t i = 0; i < length; i++)
-    {
-      hex += digits[bytes[i] >> 4];
-      hex += digits[bytes[i] & 0x0F];
-    }
-    return hex;
-  }
 
   // Copies `total` bytes of firmware from the download into the update partition, hashing them on the
   // way. Returns false if the download stalls or flash writing fails.

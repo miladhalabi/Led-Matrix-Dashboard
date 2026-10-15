@@ -10,6 +10,9 @@ String removeStartWord(const String &input, String wordToRemove);
 bool parseTime(String time, int &hour, int &minute, String &isAmPm);
 void parseTime24(String time, int &hour, int &minute);
 bool parseSpriteData(const String &input, uint8_t *&output, uint8_t &width, uint8_t &frames);
+String firstWord(const String &text);
+bool isSha256(const String &text);
+String toHex(const uint8_t *bytes, size_t length);
 bool parseDate(String date, int &year, int &month, int &day);
 
 void setUp() {}
@@ -160,6 +163,33 @@ void test_parseSpriteData_rejects_bad_input()
   TEST_ASSERT_NULL(data);
 }
 
+// ---------------------------------------------------------------- text helpers
+void test_firstWord()
+{
+  TEST_ASSERT_EQUAL_STRING("alarm", firstWord("alarm,07:00:am").c_str());
+  TEST_ASSERT_EQUAL_STRING("alarm", firstWord("alarm on").c_str());
+  TEST_ASSERT_EQUAL_STRING("ring", firstWord("ring").c_str());
+  TEST_ASSERT_EQUAL_STRING("", firstWord("").c_str());
+  TEST_ASSERT_EQUAL_STRING("", firstWord(" leading space").c_str());
+}
+
+void test_isSha256()
+{
+  TEST_ASSERT_TRUE(isSha256("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"));
+  TEST_ASSERT_TRUE(isSha256("E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"));
+  TEST_ASSERT_FALSE(isSha256("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b85"));   // 63
+  TEST_ASSERT_FALSE(isSha256("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b8555")); // 65
+  TEST_ASSERT_FALSE(isSha256("g3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"));  // not hex
+  TEST_ASSERT_FALSE(isSha256(""));
+}
+
+void test_toHex()
+{
+  const uint8_t bytes[] = {0x00, 0xAB, 0xFF, 0x10};
+  TEST_ASSERT_EQUAL_STRING("00abff10", toHex(bytes, sizeof(bytes)).c_str());
+  TEST_ASSERT_EQUAL_STRING("", toHex(bytes, 0).c_str());
+}
+
 int main(int, char **)
 {
   UNITY_BEGIN();
@@ -175,5 +205,8 @@ int main(int, char **)
   RUN_TEST(test_parseSpriteData_reads_width_frames_and_bytes);
   RUN_TEST(test_parseSpriteData_replaces_the_previous_animation);
   RUN_TEST(test_parseSpriteData_rejects_bad_input);
+  RUN_TEST(test_firstWord);
+  RUN_TEST(test_isSha256);
+  RUN_TEST(test_toHex);
   return UNITY_END();
 }

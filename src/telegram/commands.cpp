@@ -6,6 +6,7 @@
 #include <usersManagement/usersManagement.h>
 #include <prayerTime/prayerTime.h>
 #include <settings/settings.h>
+#include <textUtils/textUtils.h>
 #include <telegram/telegram.h>
 #include "internal.h"
 
@@ -36,16 +37,6 @@ namespace
     return t + (pm ? " PM" : " AM");
   }
 
-  String firstWord(const String &text)
-  {
-    for (unsigned int i = 0; i < text.length(); i++)
-    {
-      if (text[i] == ' ' || text[i] == ',')
-        return text.substring(0, i);
-    }
-    return text;
-  }
-
   bool cmdStart(TBMessage &msg, const String &)
   {
     showMainMenu(msg);
@@ -56,19 +47,6 @@ namespace
   {
     ringSent = true;
     reply(msg, "ringing...");
-    return true;
-  }
-
-  // True for exactly 64 hex digits.
-  bool isSha256(const String &text)
-  {
-    if (text.length() != 64)
-      return false;
-    for (unsigned int i = 0; i < text.length(); i++)
-    {
-      if (!isxdigit(text[i]))
-        return false;
-    }
     return true;
   }
 
