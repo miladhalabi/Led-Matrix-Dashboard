@@ -1,12 +1,20 @@
 #include "health.h"
 #include <Preferences.h>
 #include <esp_system.h>
+#include <esp_ota_ops.h>
 #include <rtcClock/rtcClock.h>
 #include <settings/settings.h>
 #include <telegram/telegram.h>
 
+// The Arduino core marks a new firmware valid as soon as it boots, which makes rollback useless.
+// Returning true here keeps a freshly updated image "pending" until healthTask confirms it after it has
+// run for CONFIRM_AFTER_MS. If it crashes or loses power before that, the bootloader goes back to the
+// previous firmware. (A serial upload is never pending, so this only affects over-the-air updates.)
+extern "C" bool verifyRollbackLater() { return true; }
+
 namespace
 {
+  const uint32_t CONFIRM_AFTER_MS = 120000;
   const uint32_t CHECK_INTERVAL_MS = 30000;
   const uint32_t LOW_HEAP_BYTES = 30000;  // total free heap
   const uint32_t LOW_BLOCK_BYTES = 20000; // largest free block; TLS needs a big contiguous chunk
@@ -87,8 +95,16 @@ void healthTask(void *parameter)
 {
   int lowChecks = 0;
   int checks = 0;
+  bool confirmed = false;
   for (;;)
   {
+    if (!confirmed && millis() > CONFIRM_AFTER_MS)
+    {
+      confirmed = true;
+      const esp_err_t result = esp_ota_mark_app_valid_cancel_rollback();
+      Serial.printf("Health: firmware confirmed (%s)\n", result == ESP_OK ? "ok" : esp_err_to_name(result));
+    }
+
     const uint32_t freeHeap = ESP.getFreeHeap();
     const uint32_t largestBlock = ESP.getMaxAllocHeap();
     Serial.printf("Health: heap free=%u largest block=%u lowest ever=%u\n", freeHeap, largestBlock, ESP.getMinFreeHeap());
