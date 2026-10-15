@@ -30,7 +30,7 @@ static int hexValue(char c)
   return -1;
 }
 
-bool parseSpriteData(const String &input, uint8_t *&output, uint8_t &width, uint8_t &frames)
+bool parseSpriteData(const String &input, uint8_t *&output, uint8_t &frames, uint8_t &width)
 {
   delete[] output; // the previous animation; without this every call leaked its buffer
   output = nullptr;
@@ -39,12 +39,12 @@ bool parseSpriteData(const String &input, uint8_t *&output, uint8_t &width, uint
   const char *ptr = text.c_str();
   char *end = nullptr;
 
-  const long newWidth = strtol(ptr, &end, 10);
+  const long newFrames = strtol(ptr, &end, 10);
   if (end == ptr || (*end != ',' && *end != ' '))
     return false;
   ptr = end + 1;
 
-  const long newFrames = strtol(ptr, &end, 10);
+  const long newWidth = strtol(ptr, &end, 10);
   if (end == ptr || (*end != ',' && *end != ' '))
     return false;
   ptr = end + 1;
@@ -73,8 +73,8 @@ bool parseSpriteData(const String &input, uint8_t *&output, uint8_t &width, uint
   }
 
   output = data;
-  width = (uint8_t)newWidth;
   frames = (uint8_t)newFrames;
+  width = (uint8_t)newWidth;
   return true;
 }
 

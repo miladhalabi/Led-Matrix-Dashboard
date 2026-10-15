@@ -9,7 +9,7 @@ String formatTime12Hour(int hour, int minute, bool &isPM);
 String removeStartWord(const String &input, String wordToRemove);
 bool parseTime(String time, int &hour, int &minute, String &isAmPm);
 void parseTime24(String time, int &hour, int &minute);
-bool parseSpriteData(const String &input, uint8_t *&output, uint8_t &width, uint8_t &frames);
+bool parseSpriteData(const String &input, uint8_t *&output, uint8_t &frames, uint8_t &width);
 String firstWord(const String &text);
 bool isSha256(const String &text);
 String toHex(const uint8_t *bytes, size_t length);
@@ -123,28 +123,32 @@ void test_parseDate()
 }
 
 // ---------------------------------------------------------------- animations
-void test_parseSpriteData_reads_width_frames_and_bytes()
+void test_parseSpriteData_reads_frames_width_and_bytes()
 {
   uint8_t *data = nullptr;
-  uint8_t width = 0, frames = 0;
-  TEST_ASSERT_TRUE(parseSpriteData("anim,2,2,01,0a 0B,ff", data, width, frames));
-  TEST_ASSERT_EQUAL(2, width);
+  uint8_t frames = 0, width = 0;
+  // 2 frames of 3 columns each: "anim,<frames>,<width>,<bytes>"
+  TEST_ASSERT_TRUE(parseSpriteData("anim,2,3,01,0a 0B,ff0c 7e", data, frames, width));
   TEST_ASSERT_EQUAL(2, frames);
+  TEST_ASSERT_EQUAL(3, width);
   TEST_ASSERT_NOT_NULL(data);
   TEST_ASSERT_EQUAL_HEX8(0x01, data[0]);
   TEST_ASSERT_EQUAL_HEX8(0x0A, data[1]);
   TEST_ASSERT_EQUAL_HEX8(0x0B, data[2]);
   TEST_ASSERT_EQUAL_HEX8(0xFF, data[3]);
+  TEST_ASSERT_EQUAL_HEX8(0x0C, data[4]);
+  TEST_ASSERT_EQUAL_HEX8(0x7E, data[5]);
   delete[] data;
 }
 
 void test_parseSpriteData_replaces_the_previous_animation()
 {
   uint8_t *data = nullptr;
-  uint8_t width = 0, frames = 0;
-  TEST_ASSERT_TRUE(parseSpriteData("anim,1,1,aa", data, width, frames));
-  TEST_ASSERT_TRUE(parseSpriteData("anim,1,2,bb,cc", data, width, frames)); // frees the first array
+  uint8_t frames = 0, width = 0;
+  TEST_ASSERT_TRUE(parseSpriteData("anim,1,1,aa", data, frames, width));
+  TEST_ASSERT_TRUE(parseSpriteData("anim,2,1,bb,cc", data, frames, width)); // frees the first array
   TEST_ASSERT_EQUAL(2, frames);
+  TEST_ASSERT_EQUAL(1, width);
   TEST_ASSERT_EQUAL_HEX8(0xCC, data[1]);
   delete[] data;
 }
@@ -152,14 +156,14 @@ void test_parseSpriteData_replaces_the_previous_animation()
 void test_parseSpriteData_rejects_bad_input()
 {
   uint8_t *data = nullptr;
-  uint8_t width = 0, frames = 0;
-  TEST_ASSERT_FALSE(parseSpriteData("anim,2,2,01,02", data, width, frames));    // too little data
-  TEST_ASSERT_FALSE(parseSpriteData("anim,1,1,zz", data, width, frames));       // not hex
-  TEST_ASSERT_FALSE(parseSpriteData("anim,1,1,a", data, width, frames));        // half a byte
-  TEST_ASSERT_FALSE(parseSpriteData("anim,0,4,00", data, width, frames));       // empty
-  TEST_ASSERT_FALSE(parseSpriteData("anim,255,255,00", data, width, frames));   // too large
-  TEST_ASSERT_FALSE(parseSpriteData("anim,x,2,00", data, width, frames));
-  TEST_ASSERT_FALSE(parseSpriteData("anim", data, width, frames));
+  uint8_t frames = 0, width = 0;
+  TEST_ASSERT_FALSE(parseSpriteData("anim,2,2,01,02", data, frames, width));    // too little data
+  TEST_ASSERT_FALSE(parseSpriteData("anim,1,1,zz", data, frames, width));       // not hex
+  TEST_ASSERT_FALSE(parseSpriteData("anim,1,1,a", data, frames, width));        // half a byte
+  TEST_ASSERT_FALSE(parseSpriteData("anim,0,4,00", data, frames, width));       // empty
+  TEST_ASSERT_FALSE(parseSpriteData("anim,255,255,00", data, frames, width));   // too large
+  TEST_ASSERT_FALSE(parseSpriteData("anim,x,2,00", data, frames, width));
+  TEST_ASSERT_FALSE(parseSpriteData("anim", data, frames, width));
   TEST_ASSERT_NULL(data);
 }
 
@@ -202,7 +206,7 @@ int main(int, char **)
   RUN_TEST(test_parseTime_rejects_bad_input);
   RUN_TEST(test_parseTime24);
   RUN_TEST(test_parseDate);
-  RUN_TEST(test_parseSpriteData_reads_width_frames_and_bytes);
+  RUN_TEST(test_parseSpriteData_reads_frames_width_and_bytes);
   RUN_TEST(test_parseSpriteData_replaces_the_previous_animation);
   RUN_TEST(test_parseSpriteData_rejects_bad_input);
   RUN_TEST(test_firstWord);

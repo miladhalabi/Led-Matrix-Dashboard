@@ -42,8 +42,8 @@ const uint8_t PROGMEM heart[F_HEART * W_HEART] =
     {0x0e,0x11,0x21,0x42,0x84,0x42,0x21,0x11,0x0e,0x0e,0x1f,0x33,0x66,0xcc,0x66,0x33,0x1f,0x0e,0x0e,0x1f,0x3f,0x7e,0xfc,0x7e,0x3f,0x1f,0x0e,0x0e,0x1f,0x33,0x66,0xcc,0x66,0x33,0x1f,0x0e,0x0e,0x11,0x21,0x42,0x84,0x42,0x21,0x11,0x0e,};
 
   uint8_t *customAnim = nullptr;
-  uint8_t F_CUSTOM_ANIM = 6;
-  uint8_t W_CUSTOM_ANIM = 8;
+  uint8_t customFrames = 6;
+  uint8_t customWidth = 8;
 
   struct Page
   {
@@ -68,10 +68,10 @@ const uint8_t PROGMEM heart[F_HEART * W_HEART] =
       myDisplay.displayText("", PA_CENTER, 50, PAUSE_TIME, PA_SPRITE);
       myDisplay.setSpriteData(heart, W_HEART, F_HEART, heart, W_HEART, F_HEART);
     }
-    else if (message.startsWith("anim") && parseSpriteData(message, customAnim, W_CUSTOM_ANIM, F_CUSTOM_ANIM))
+    else if (message.startsWith("anim") && parseSpriteData(message, customAnim, customFrames, customWidth))
     {
       myDisplay.displayText("", PA_CENTER, 50, PAUSE_TIME, PA_SPRITE, PA_SPRITE);
-      myDisplay.setSpriteData(customAnim, F_CUSTOM_ANIM, W_CUSTOM_ANIM, customAnim, F_CUSTOM_ANIM, W_CUSTOM_ANIM);
+      myDisplay.setSpriteData(customAnim, customWidth, customFrames, customAnim, customWidth, customFrames);
     }
     else
     {
