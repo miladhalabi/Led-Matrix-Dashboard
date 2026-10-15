@@ -90,7 +90,7 @@ bool prayerTimeFetch(int year, int month, int day)
 
 unsigned long lastRTCUpdate = 0; 
 const long rtcUpdateInterval = 1000; // Update RTC every 1000ms (1 second)
-DateTime now;  // Cached time from rtc.now()
+DateTime now;  // Cached time from rtcNow()
 
 void updateCachedTime()
 {
@@ -99,7 +99,7 @@ void updateCachedTime()
   if (currentMillis - lastRTCUpdate >= rtcUpdateInterval)
   {
     lastRTCUpdate = currentMillis;
-    now = rtc.now();  // Only update 'now' once per second
+    now = rtcNow();  // Only update 'now' once per second
   }
 }
 

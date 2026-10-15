@@ -118,7 +118,7 @@ namespace
       invalid(msg);
       return true;
     }
-    DateTime now = rtc.now();
+    DateTime now = rtcNow();
     reply(msg, "Time Setted On " + clock12(now.hour(), now.minute()));
     return true;
   }
@@ -130,7 +130,7 @@ namespace
       invalid(msg);
       return true;
     }
-    DateTime now = rtc.now();
+    DateTime now = rtcNow();
     reply(msg, "Date Setted On " + String(now.year()) + "/" + String(now.month()) + "/" + String(now.day()));
     return true;
   }

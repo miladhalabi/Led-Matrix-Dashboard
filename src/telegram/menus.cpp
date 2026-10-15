@@ -206,7 +206,7 @@ namespace
 
   const char *openTimeEditor(TBMessage &msg, const String &)
   {
-    DateTime now = rtc.now();
+    DateTime now = rtcNow();
     loadDraft(now.hour(), now.minute());
     showTimeMenu(msg);
     return nullptr;
@@ -222,8 +222,8 @@ namespace
   {
     int h24, m24;
     saveDraftAs24Hour(h24, m24);
-    DateTime now = rtc.now();
-    rtc.adjust(DateTime(now.year(), now.month(), now.day(), h24, m24, 0));
+    DateTime now = rtcNow();
+    rtcAdjust(DateTime(now.year(), now.month(), now.day(), h24, m24, 0));
     bot.sendMessage(msg, "✅ System time updated!");
     showMainMenu(msg);
     return nullptr;

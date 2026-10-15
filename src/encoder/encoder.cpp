@@ -51,7 +51,7 @@ void handleEncoder()
   bool draftAlarmOn = cfg.alarmEnabled;
   bool draftPrayerOn = cfg.prayerEnabled;
   int veryoldPos = 0;
-  DateTime now = rtc.now();
+  DateTime now = rtcNow();
   hours = now.hour();
   minutes = now.minute();
   day = now.day();
@@ -261,7 +261,7 @@ void handleEncoder()
         {
           int hour24, minute24;
           convertTo24Hour(hours, minutes, isPMorAM, hour24, minute24);
-          rtc.adjust(DateTime(2000 + year, month, day, hour24, minutes, 0));
+          rtcAdjust(DateTime(2000 + year, month, day, hour24, minutes, 0));
           myDisplay.print("EXIT");
           delay(1000);
           currentState = MAIN_MENU;

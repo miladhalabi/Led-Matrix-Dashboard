@@ -2,6 +2,7 @@
 #include <esp_task_wdt.h>
 #include <time.h>
 #include <RTClib.h>
+#include <rtcClock/rtcClock.h>
 #include <Wire.h>
 #include "DFRobotDFPlayerMini.h"
 #include <formaters/formaters.h>
@@ -15,7 +16,6 @@
 
 #define PRESS_PIN 32
 
-RTC_DS3231 rtc;
 DFRobotDFPlayerMini player;
 
 String timeNow, dateNow;
@@ -25,7 +25,7 @@ void handleTimeTask(void *parameter)
 {
   for (;;)
   {
-    DateTime now = rtc.now();
+    DateTime now = rtcNow();
     const Settings cfg = settings::get();
     bool isPM;
     String timeString = formatTime12Hour(now.hour(), now.minute(), isPM);
@@ -66,7 +66,7 @@ void handleTimeTask(void *parameter)
 void HandleAlarmTask()
 {
   unsigned long Otime = millis();
-  DateTime now = rtc.now();
+  DateTime now = rtcNow();
   const Settings cfg = settings::get();
   if (now.hour() == cfg.alarmHour && now.minute() == cfg.alarmMinute && cfg.alarmEnabled && AlarmExit == false)
   {

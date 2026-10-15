@@ -38,7 +38,7 @@ bool alarmSetter(String timeToAlarm)
 
 bool timeSetter(String timeMessgae)
 {
-  DateTime getTimeTelegram = rtc.now();
+  DateTime getTimeTelegram = rtcNow();
   String cleanedTimeMessage = removeStartWord(timeMessgae, "time");
   int hourTelegram = 0, minuteTelegram = 0;
   int yearTelegram = getTimeTelegram.year();
@@ -51,7 +51,7 @@ bool timeSetter(String timeMessgae)
     int nowTelegramHour = 0;
     int nowTelegramMinute = 0;
     convertTo24Hour(hourTelegram, minuteTelegram, AmPm, nowTelegramHour, nowTelegramMinute);
-    rtc.adjust(DateTime(yearTelegram, monthTelegram, dayTelegram, nowTelegramHour, nowTelegramMinute));
+    rtcAdjust(DateTime(yearTelegram, monthTelegram, dayTelegram, nowTelegramHour, nowTelegramMinute));
     return true;
   }
   return false;
@@ -59,14 +59,14 @@ bool timeSetter(String timeMessgae)
 
 bool dateSetter(String dateMessge)
 {
-  DateTime getTimeTelegram = rtc.now();
+  DateTime getTimeTelegram = rtcNow();
   String cleanedTimeMessage = removeStartWord(dateMessge, "date");
   Serial.println(cleanedTimeMessage);
   int hourTelegram = getTimeTelegram.hour(), minuteTelegram = getTimeTelegram.minute();
   int yearTelegram = 0, monthTelegram = 0, dayTelegram = 0;
   if (parseDate(cleanedTimeMessage, yearTelegram, monthTelegram, dayTelegram))
   {
-    rtc.adjust(DateTime(yearTelegram, monthTelegram, dayTelegram, hourTelegram, minuteTelegram));
+    rtcAdjust(DateTime(yearTelegram, monthTelegram, dayTelegram, hourTelegram, minuteTelegram));
     return true;
   }
   return false;

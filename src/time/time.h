@@ -4,10 +4,10 @@
 #include <Arduino.h>   // Include Arduino core header to use the String class
 #include <RTClib.h>
 #include <Wire.h>
+#include <rtcClock/rtcClock.h>
 #include "DFRobotDFPlayerMini.h"
 
 
-extern RTC_DS3231 rtc;
 extern DFRobotDFPlayerMini player;
 
 extern String timeNow, dateNow;

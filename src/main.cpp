@@ -13,6 +13,7 @@
 #include <display/display.h>
 #include <time/time.h>
 #include <prayerTime/prayerTime.h>
+#include <rtcClock/rtcClock.h>
 
 TaskHandle_t TaskEncoderHandle = NULL;
 TaskHandle_t TaskDisplayHandle = NULL;
@@ -43,7 +44,7 @@ void setup()
 
   digitalWrite(LED_PIN, ledState);
 
-  if (!rtc.begin())
+  if (!rtcBegin())
   {
     Serial.println("RTC module is NOT found");
   }
